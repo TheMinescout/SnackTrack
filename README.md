@@ -7,12 +7,13 @@ SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application 
 ### 📊 Dashboard (Garmin-Style)
 * **Calorie Speedometer:** A dynamic visual gauge that changes color (Green → Orange → Red) based on your daily consumption.
 * **Macro Tracking:** Individual progress bars for Protein, Carbohydrates, and Fats.
-* **Daily Timeline:** View, review, and delete items from your daily food log.
+* **Daily Timeline:** View, review, edit, and delete items from your daily food log.
+* **History Navigator:** Seamlessly easily switch between past history dates and today using the built-in date cycler, all without page reloads thanks to hash-routing.
 
 ### 🔍 Food Logging
 * **Barcode Scanner:** Built-in camera integration to scan food packaging directly from your phone.
 * **Text Search:** Search the OpenFoodFacts database (600k+ products) for quick logging.
-* **Dynamic Serving Sizes:** Calculate macros based on 100g, standard servings, or custom gram amounts.
+* **Dynamic Serving Sizes & Editing:** Calculate macros based on 100g, standard servings, or custom gram amounts. Instantly edit existing logs without recreating them.
 
 ### 🤖 AI-Powered Goal Setting
 * **PDF Upload:** Upload a meal plan or PDF from your nutritionist.
@@ -21,8 +22,9 @@ SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application 
 * **Manual Override:** Easily edit your goals manually if you prefer.
 
 ### 🎨 Material Design 3 (M3)
-* Beautiful, modern UI using Material Design 3 color tokens and elevation shadows.
-* Mobile-first design with a responsive desktop grid layout.
+* Beautiful, modern UI using Material Design 3 color tokens, elevation shadows, and micro-animations.
+* Auto-switching **Dark Mode** support aligned with your system preferences.
+* Mobile-first design that elegantly scales up to a desktop side-navigation rail layout.
 * Bottom navigation bar for easy, one-handed mobile use.
 
 ---

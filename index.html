@@ -26,7 +26,7 @@
         }
 
         :root {
-            /* Material Design 3 Color Tokens */
+            /* Material Design 3 Color Tokens - Light */
             --md-sys-color-primary: #6750A4;
             --md-sys-color-on-primary: #FFFFFF;
             --md-sys-color-primary-container: #EADDFF;
@@ -54,10 +54,44 @@
             --md-sys-color-outline: #79747E;
             --md-sys-color-outline-variant: #CAC4D0;
             
-            /* Elevation shadows */
             --md-sys-elevation-1: 0 1px 2px 0 rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15);
             --md-sys-elevation-2: 0 1px 2px 0 rgba(0,0,0,0.3), 0 2px 6px 2px rgba(0,0,0,0.15);
             --md-sys-elevation-3: 0 4px 8px 3px rgba(0,0,0,0.15), 0 1px 3px 0 rgba(0,0,0,0.3);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --md-sys-color-primary: #D0BCFF;
+                --md-sys-color-on-primary: #381E72;
+                --md-sys-color-primary-container: #4F378B;
+                --md-sys-color-on-primary-container: #EADDFF;
+                
+                --md-sys-color-secondary: #CCC2DC;
+                --md-sys-color-on-secondary: #332D41;
+                --md-sys-color-secondary-container: #4A4458;
+                --md-sys-color-on-secondary-container: #E8DEF8;
+                
+                --md-sys-color-tertiary: #EFB8C8;
+                --md-sys-color-on-tertiary: #492532;
+                
+                --md-sys-color-error: #F2B8B5;
+                --md-sys-color-on-error: #601410;
+                --md-sys-color-error-container: #8C1D18;
+                
+                --md-sys-color-background: #141218;
+                --md-sys-color-on-background: #E6E0E9;
+                --md-sys-color-surface: #141218;
+                --md-sys-color-on-surface: #E6E0E9;
+                --md-sys-color-surface-variant: #49454F;
+                --md-sys-color-on-surface-variant: #CAC4D0;
+                
+                --md-sys-color-outline: #938F99;
+                --md-sys-color-outline-variant: #49454F;
+
+                --md-sys-elevation-1: 0 1px 2px 0 rgba(0,0,0,0.5), 0 1px 3px 1px rgba(0,0,0,0.3);
+                --md-sys-elevation-2: 0 1px 2px 0 rgba(0,0,0,0.5), 0 2px 6px 2px rgba(0,0,0,0.3);
+                --md-sys-elevation-3: 0 4px 8px 3px rgba(0,0,0,0.3), 0 1px 3px 0 rgba(0,0,0,0.5);
+            }
         }
 
         body {
@@ -105,7 +139,7 @@
             cursor: pointer;
             padding: 8px;
             border-radius: 50%;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -113,6 +147,19 @@
 
         .icon-btn:hover {
             background: var(--md-sys-color-surface-variant);
+            transform: scale(1.05);
+        }
+
+        .icon-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Main Content wrapper for layout */
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
         }
 
         /* Main Content */
@@ -120,6 +167,9 @@
             flex: 1;
             padding: 16px;
             overflow-y: auto;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
         }
 
         /* Login Screen */
@@ -417,7 +467,7 @@
             align-items: center;
         }
 
-        /* Bottom Navigation */
+        /* Bottom Navigation / Navigation Rail */
         .bottom-nav {
             background: var(--md-sys-color-surface);
             box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
@@ -436,7 +486,7 @@
             padding: 8px 12px;
             cursor: pointer;
             border-radius: 16px;
-            transition: background 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             color: var(--md-sys-color-on-surface-variant);
             font-size: 12px;
             font-weight: 500;
@@ -450,6 +500,41 @@
         .nav-item.active {
             background: var(--md-sys-color-secondary-container);
             color: var(--md-sys-color-on-secondary-container);
+            transform: translateY(-2px);
+        }
+
+        @media (min-width: 768px) {
+            .app-shell {
+                flex-direction: row;
+            }
+            .top-app-bar {
+                position: fixed;
+                top: 0;
+                left: 80px; /* offset by nav rail */
+                right: 0;
+                z-index: 101;
+            }
+            .main-container {
+                margin-left: 80px;
+                padding-top: 64px; /* offset by top bar */
+            }
+            .bottom-nav {
+                flex-direction: column;
+                justify-content: flex-start;
+                padding: 16px 0;
+                width: 80px;
+                box-shadow: var(--md-sys-elevation-2);
+                height: 100vh;
+                position: fixed;
+                left: 0;
+                top: 0;
+                z-index: 102;
+                gap: 16px;
+                border-right: 1px solid var(--md-sys-color-outline-variant);
+            }
+            .nav-item {
+                padding: 12px 8px;
+            }
         }
 
         /* Tabs */
@@ -736,6 +821,7 @@
 
     <!-- Main App -->
     <div id="mainApp" class="app-shell hidden">
+        <div class="main-container">
         <!-- Top App Bar -->
         <div class="top-app-bar">
             <h1>
@@ -751,6 +837,13 @@
         <div class="main-content" id="mainContent">
             <!-- Dashboard View -->
             <div id="dashboardView">
+                <!-- Date Navigator (History) -->
+                <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; margin-bottom: 16px;">
+                    <button class="icon-btn" onclick="app.changeDate(-1)"><span class="material-icons">chevron_left</span></button>
+                    <div style="font-weight: 500;" id="currentDateDisplay">Today</div>
+                    <button class="icon-btn" onclick="app.changeDate(1)"><span class="material-icons">chevron_right</span></button>
+                </div>
+
                 <div class="dashboard">
                     <!-- Primary Gauge: Calories -->
                     <div class="card gauge-primary">
@@ -934,6 +1027,7 @@
                 </div>
             </div>
         </div>
+        </div>
 
         <!-- Bottom Navigation -->
         <div class="bottom-nav">
@@ -948,6 +1042,34 @@
             <div class="nav-item" onclick="app.navigate('goals')">
                 <span class="material-icons">flag</span>
                 Goals
+            </div>
+        </div>
+    </div>
+
+    <!-- Onboarding Modal -->
+    <div id="onboardingModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Welcome to SnackTrack!</div>
+            </div>
+            <div class="modal-content">
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <span class="material-icons" style="font-size: 64px; color: var(--md-sys-color-primary);">rocket_launch</span>
+                </div>
+                <p style="margin-bottom: 16px; color: var(--md-sys-color-on-surface-variant);">
+                    Get ready to track your nutrition like a pro! Here is how to get started:
+                </p>
+                <ul style="padding-left: 20px; color: var(--md-sys-color-on-surface-variant); line-height: 1.6;">
+                    <li><strong>Set your goals:</strong> Head over to the Goals tab to enter your daily targets, or upload a PDF from your nutritionist.</li>
+                    <li><strong>Log your food:</strong> Use the Log Food tab to search our vast database or scan barcodes with your camera.</li>
+                    <li><strong>Track progress:</strong> Return to the Dashboard to see your daily progress at a glance. Navigate to past days using the top arrows.</li>
+                </ul>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-filled" onclick="app.closeOnboarding()">
+                    <span class="material-icons">check</span>
+                    Got it!
+                </button>
             </div>
         </div>
     </div>
@@ -1024,6 +1146,8 @@
             currentView: 'dashboard',
             scanner: null,
             selectedFood: null,
+            currentDate: new Date().toISOString().split('T')[0],
+            editingLogId: null,
 
             init() {
                 // Load saved credentials
@@ -1059,6 +1183,20 @@
                 // Load goals and logs from localStorage
                 this.loadGoals();
                 this.loadFoodLogs();
+                
+                // Listen to hash changes for SPA navigation
+                window.addEventListener('hashchange', () => {
+                    const hash = window.location.hash.replace('#', '') || 'dashboard';
+                    this.navigate(hash, true);
+                });
+                
+                this.updateDashboard();
+            },
+
+            changeDate(offsetDays) {
+                const date = new Date(this.currentDate);
+                date.setDate(date.getDate() + offsetDays);
+                this.currentDate = date.toISOString().split('T')[0];
                 this.updateDashboard();
             },
 
@@ -1084,23 +1222,43 @@
             showMainApp() {
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
+                
+                if (!localStorage.getItem('onboarded')) {
+                    document.getElementById('onboardingModal').classList.add('active');
+                }
+
+                const hash = window.location.hash.replace('#', '') || 'dashboard';
+                this.navigate(hash, true);
                 this.updateDashboard();
             },
 
-            navigate(view) {
+            closeOnboarding() {
+                localStorage.setItem('onboarded', 'true');
+                document.getElementById('onboardingModal').classList.remove('active');
+            },
+
+            navigate(view, fromHashChange = false) {
+                if (!fromHashChange) {
+                    window.location.hash = view;
+                    return;
+                }
+
                 // Hide all views
                 document.getElementById('dashboardView').classList.add('hidden');
                 document.getElementById('logView').classList.add('hidden');
                 document.getElementById('goalsView').classList.add('hidden');
 
                 // Show selected view
-                document.getElementById(view + 'View').classList.remove('hidden');
+                const viewEl = document.getElementById(view + 'View');
+                if (viewEl) viewEl.classList.remove('hidden');
 
                 // Update nav items
                 document.querySelectorAll('.nav-item').forEach(item => {
                     item.classList.remove('active');
+                    if (item.getAttribute('onclick').includes(view)) {
+                        item.classList.add('active');
+                    }
                 });
-                event.currentTarget.classList.add('active');
 
                 this.currentView = view;
 
@@ -1321,6 +1479,7 @@
             closeFoodModal() {
                 document.getElementById('foodModal').classList.remove('active');
                 this.selectedFood = null;
+                this.editingLogId = null;
             },
 
             logSelectedFood() {
@@ -1342,25 +1501,69 @@
                     servingSizeText = document.getElementById('customAmount').value + 'g';
                 }
 
-                const logEntry = {
-                    id: this.generateId(),
-                    food_name: this.selectedFood.product_name || 'Unknown Product',
-                    calories,
-                    protein_g: protein,
-                    carbs_g: carbs,
-                    fat_g: fat,
-                    serving_size_logged: servingSizeText,
-                    timestamp: new Date().toISOString(),
-                    date_string: new Date().toISOString().split('T')[0]
-                };
+                if (this.editingLogId) {
+                    const index = this.foodLogs.findIndex(log => log.id === this.editingLogId);
+                    if (index !== -1) {
+                        this.foodLogs[index] = {
+                            ...this.foodLogs[index],
+                            calories,
+                            protein_g: protein,
+                            carbs_g: carbs,
+                            fat_g: fat,
+                            serving_size_logged: servingSizeText
+                        };
+                    }
+                    this.editingLogId = null;
+                    this.showSnackbar('Food updated successfully!');
+                } else {
+                    const logEntry = {
+                        id: this.generateId(),
+                        food_name: this.selectedFood.product_name || 'Unknown Product',
+                        calories,
+                        protein_g: protein,
+                        carbs_g: carbs,
+                        fat_g: fat,
+                        serving_size_logged: servingSizeText,
+                        timestamp: new Date().toISOString(),
+                        date_string: this.currentDate // log to currently selected date
+                    };
+                    this.foodLogs.push(logEntry);
+                    this.showSnackbar('Food logged successfully!');
+                }
 
-                this.foodLogs.push(logEntry);
                 this.saveFoodLogs();
                 this.updateDashboard();
                 this.closeFoodModal();
                 
-                this.showSnackbar('Food logged successfully!');
-                this.navigate('dashboard');
+                this.navigate('dashboard', true);
+            },
+
+            editLog(id) {
+                const log = this.foodLogs.find(l => l.id === id);
+                if (!log) return;
+
+                this.editingLogId = id;
+                // Re-create a light product struct to reuse the modal
+                this.selectedFood = {
+                    product_name: log.food_name,
+                    nutriments: {
+                        'energy-kcal_100g': log.calories,
+                        'proteins_100g': log.protein_g,
+                        'carbohydrates_100g': log.carbs_g,
+                        'fat_100g': log.fat_g
+                    }
+                };
+
+                document.getElementById('foodModalTitle').textContent = 'Edit ' + log.food_name;
+                document.getElementById('foodModalImage').innerHTML = ''; // no image saved in log
+                
+                // For simplicity, handle edit mostly as 'custom' or just 'serving' if it was standard
+                document.getElementById('servingSizeSelect').value = 'custom';
+                document.getElementById('customAmountGroup').classList.remove('hidden');
+                document.getElementById('customAmount').value = parseFloat(log.serving_size_logged) || 100;
+
+                this.updateModalMacros();
+                document.getElementById('foodModal').classList.add('active');
             },
 
             deleteLog(id) {
@@ -1371,11 +1574,17 @@
             },
 
             updateDashboard() {
-                const today = new Date().toISOString().split('T')[0];
-                const todayLogs = this.foodLogs.filter(log => log.date_string === today);
+                const activeDate = this.currentDate;
+                
+                // Update Date Display
+                const isToday = activeDate === new Date().toISOString().split('T')[0];
+                const parts = activeDate.split('-');
+                document.getElementById('currentDateDisplay').textContent = isToday ? 'Today' : `${parts[1]}/${parts[2]}/${parts[0]}`;
+
+                const activeLogs = this.foodLogs.filter(log => log.date_string === activeDate);
 
                 // Calculate totals
-                const totals = todayLogs.reduce((acc, log) => ({
+                const totals = activeLogs.reduce((acc, log) => ({
                     calories: acc.calories + (log.calories || 0),
                     protein: acc.protein + (log.protein_g || 0),
                     carbs: acc.carbs + (log.carbs_g || 0),
@@ -1481,7 +1690,12 @@
                 const listDiv = document.getElementById('foodLogList');
                 
                 if (logs.length === 0) {
-                    listDiv.innerHTML = '<div class="empty-state"><span class="material-icons">restaurant</span><p>No food logged today</p><p style="font-size: 12px; margin-top: 8px;">Tap "Log Food" to get started</p></div>';
+                    const isToday = this.currentDate === new Date().toISOString().split('T')[0];
+                    listDiv.innerHTML = `<div class="empty-state">
+                        <span class="material-icons">restaurant</span>
+                        <p>No food logged ${isToday ? 'today' : 'on this date'}</p>
+                        ${isToday ? '<p style="font-size: 12px; margin-top: 8px;">Tap "Log Food" to get started</p>' : ''}
+                    </div>`;
                     return;
                 }
 
@@ -1507,6 +1721,9 @@
                                     </div>
                                 </div>
                                 <div class="food-log-actions">
+                                    <button class="icon-btn" onclick="app.editLog('${log.id}')">
+                                        <span class="material-icons">edit</span>
+                                    </button>
                                     <button class="icon-btn" onclick="app.deleteLog('${log.id}')">
                                         <span class="material-icons">delete</span>
                                     </button>
