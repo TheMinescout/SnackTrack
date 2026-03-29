@@ -14,6 +14,7 @@
     
     <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <!-- HTML5 QR Code Scanner -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -1174,6 +1175,23 @@
     <!-- Snackbar -->
     <div id="snackbar" class="snackbar"></div>
 
+    <!-- Hidden PDF Template -->
+    <div id="pdfTemplate" style="display: none;">
+        <div id="pdfContent" style="padding: 40px; font-family: 'Roboto', sans-serif; color: #333;">
+            <div style="border-bottom: 2px solid #6750A4; padding-bottom: 16px; margin-bottom: 32px; display: flex; align-items: center; gap: 12px;">
+                <div style="background: #6750A4; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px;">S</div>
+                <div>
+                    <h1 style="margin: 0; color: #6750A4; font-size: 24px;">SnackTrack Nutrition Plan</h1>
+                    <p style="margin: 4px 0 0 0; color: #666; font-size: 14px;">Tailored by your AI Dietitian</p>
+                </div>
+            </div>
+            <div id="pdfBody" style="line-height: 1.6; font-size: 14px; white-space: pre-wrap;"></div>
+            <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; text-align: center; color: #888; font-size: 10px;">
+                Generated safely and privately by SnackTrack M3
+            </div>
+        </div>
+    </div>
+
     <script>
         // Initialize PDF.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -1197,7 +1215,7 @@
             scanner: null,
             selectedFood: null,
             currentDate: new Date().toISOString().split('T')[0],
-            editingLogId: null,
+            cloudLoaded: false,
 
             init() {
                 // Load saved credentials
@@ -1231,9 +1249,8 @@
                     });
                 }
 
-                // Load goals and logs from localStorage
-                this.loadGoals();
-                this.loadFoodLogs();
+                // Load all data from localStorage immediately to prevent wipe
+                this.loadAllLocal();
                 
                 // Listen to hash changes for SPA navigation
                 window.addEventListener('hashchange', () => {
@@ -1300,7 +1317,7 @@
                 this.updateDashboard();
             },
 
-            shareRecap() {
+            async shareRecap() {
                 if (!navigator.share) {
                     this.showSnackbar('Sharing is not supported on this browser.');
                     return;
@@ -1312,9 +1329,31 @@
                     protein: acc.protein + (log.protein_g || 0)
                 }), { calories: 0, protein: 0 });
 
+                let aiMessage = '';
+                if (this.workerUrl && this.syncId) {
+                    this.showSnackbar('Generating AI Recap...');
+                    try {
+                        const url = new URL(this.workerUrl);
+                        url.pathname = '/recap';
+                        const res = await fetch(url.toString(), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                date: activeDate,
+                                goals: this.goals,
+                                logs: activeLogs
+                            })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            aiMessage = '\n\n🤖 AI Dietitian says:\n"' + data.response.trim() + '"';
+                        }
+                    } catch(e) { console.error("Recap failed", e); }
+                }
+
                 navigator.share({
                     title: 'My SnackTrack Recap',
-                    text: `💪 SnackTrack Recap for ${activeDate}:\n🎯 Goal: ${this.goals.daily_calories} kcal\n🍔 Consumed: ${Math.round(totals.calories)} kcal\n🥩 Protein: ${totals.protein.toFixed(1)}g\n\nTracked with SnackTrack M3!`,
+                    text: `💪 SnackTrack Recap for ${activeDate}:\n🎯 Goal: ${this.goals.daily_calories} kcal\n🍔 Consumed: ${Math.round(totals.calories)} kcal\n🥩 Protein: ${totals.protein.toFixed(1)}g${aiMessage}\n\nTracked with SnackTrack M3!`,
                 }).catch(err => console.log('Error sharing', err));
             },
 
@@ -1350,6 +1389,7 @@
             updateContextField(id, type, value) {
                 const field = this.contextFields.find(f => f.id === id);
                 if (field) field[type] = value;
+                this.saveAllLocal();
                 this.syncToCloud();
             },
 
@@ -1381,8 +1421,7 @@
                             if (data.documents) this.documents = data.documents;
                             if (data.chatHistory) this.chatHistory = data.chatHistory;
                             
-                            localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
-                            localStorage.setItem('food_logs', JSON.stringify(this.foodLogs));
+                            this.saveAllLocal();
                             
                             this.updateDashboard();
                             this.renderContextFields();
@@ -1401,10 +1440,11 @@
                         }
                     }
                 } catch(e) { console.error("Cloud fetch failed", e); }
+                finally { this.cloudLoaded = true; }
             },
 
             async syncToCloud() {
-                if (!this.workerUrl || !this.syncId) return;
+                if (!this.workerUrl || !this.syncId || !this.cloudLoaded) return;
                 try {
                     const payload = {
                         goals: this.goals,
@@ -1417,12 +1457,44 @@
                     url.pathname = '/sync';
                     url.searchParams.set('profileId', this.syncId);
 
-                    await fetch(url.toString(), {
+                    fetch(url.toString(), {
                         method: 'POST',
                         body: JSON.stringify(payload),
                         headers: { 'Content-Type': 'application/json' }
-                    });
-                } catch(e) { console.error("Cloud sync failed", e); }
+                    }).catch(e => console.error("Cloud push failed", e));
+                } catch(e) { console.error("Cloud sync logic failed", e); }
+            },
+
+            saveAllLocal() {
+                localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
+                localStorage.setItem('food_logs', JSON.stringify(this.foodLogs));
+                localStorage.setItem('context_fields', JSON.stringify(this.contextFields));
+                localStorage.setItem('documents', JSON.stringify(this.documents));
+                localStorage.setItem('chat_history', JSON.stringify(this.chatHistory));
+            },
+
+            loadAllLocal() {
+                const savedGoals = localStorage.getItem('nutrition_goals');
+                const savedLogs = localStorage.getItem('food_logs');
+                const savedContext = localStorage.getItem('context_fields');
+                const savedDocs = localStorage.getItem('documents');
+                const savedChat = localStorage.getItem('chat_history');
+
+                if (savedGoals) this.goals = JSON.parse(savedGoals);
+                if (savedLogs) this.foodLogs = JSON.parse(savedLogs);
+                if (savedContext) this.contextFields = JSON.parse(savedContext);
+                if (savedDocs) this.documents = JSON.parse(savedDocs);
+                if (savedChat) this.chatHistory = JSON.parse(savedChat);
+
+                // Update UI forms
+                document.getElementById('goalCalories').value = this.goals.daily_calories;
+                document.getElementById('goalProtein').value = this.goals.protein_g;
+                document.getElementById('goalCarbs').value = this.goals.carbs_g;
+                document.getElementById('goalFat').value = this.goals.fat_g;
+                if (this.goals.ai_summary) {
+                    document.getElementById('aiSummary').style.display = 'block';
+                    document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
+                }
             },
 
             renderDocuments() {
@@ -1445,6 +1517,7 @@
             deleteDocument(id) {
                 this.documents = this.documents.filter(d => d.id !== id);
                 this.renderDocuments();
+                this.saveAllLocal();
                 this.syncToCloud();
             },
 
@@ -1456,16 +1529,102 @@
                     Hello! I am your personal AI dietitian. Ask me anything about your diet or the documents you've uploaded!
                 </div>`;
 
-                this.chatHistory.forEach(msg => {
+                this.chatHistory.forEach((msg, idx) => {
                     if (msg.role === 'user') {
                         html += `<div style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); padding: 12px 16px; border-radius: 16px 16px 4px 16px; max-width: 85%; align-self: flex-end; font-size: 14px; white-space: pre-wrap;">${msg.content}</div>`;
                     } else {
-                        html += `<div style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); padding: 12px 16px; border-radius: 16px 16px 16px 4px; max-width: 85%; align-self: flex-start; font-size: 14px; white-space: pre-wrap;">${msg.content}</div>`;
+                        // Extract any log_action hidden in the message
+                        let displayContent = msg.content;
+                        let smartButton = '';
+
+                        const logMatch = msg.content.match(/<log_action>([\s\S]*?)<\/log_action>/);
+                        if (logMatch) {
+                            displayContent = displayContent.replace(logMatch[0], '').trim();
+                            try {
+                                const action = JSON.parse(logMatch[1]);
+                                const encoded = encodeURIComponent(JSON.stringify(action));
+                                smartButton = `
+                                    <button class="btn btn-filled" onclick="app.quickAddFromChat('${encoded}')" style="margin-top: 12px; background: var(--md-sys-color-tertiary); color: var(--md-sys-color-on-tertiary); font-size: 12px; padding: 6px 16px;">
+                                        <span class="material-icons" style="font-size: 16px;">add_circle</span>
+                                        Log ${action.food} (${action.cals} kcal)
+                                    </button>
+                                `;
+                            } catch(e) {}
+                        }
+
+                        html += `
+                        <div style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); padding: 12px 16px; border-radius: 16px 16px 16px 4px; max-width: 85%; align-self: flex-start; font-size: 14px; display: flex; flex-direction: column;">
+                            <div style="white-space: pre-wrap;">${displayContent}</div>
+                            ${smartButton}
+                            <button class="btn btn-text" onclick="app.downloadMessageAsPdf(${idx})" style="align-self: flex-start; padding: 4px; margin-top: 8px; font-size: 11px; color: var(--md-sys-color-primary);">
+                                <span class="material-icons" style="font-size: 14px; margin-right: 4px;">picture_as_pdf</span>
+                                Save PDF
+                            </button>
+                        </div>`;
                     }
                 });
                 
                 container.innerHTML = html;
                 container.scrollTop = container.scrollHeight;
+            },
+
+            downloadMessageAsPdf(msgIndex) {
+                const msg = this.chatHistory[msgIndex];
+                if (!msg) return;
+
+                // Clean out any log action tags
+                let cleanContent = msg.content;
+                const logMatch = cleanContent.match(/<log_action>([\s\S]*?)<\/log_action>/);
+                if (logMatch) {
+                    cleanContent = cleanContent.replace(logMatch[0], '').trim();
+                }
+
+                // Inject content
+                document.getElementById('pdfBody').textContent = cleanContent;
+                
+                // Show temporarily for rendering, but with absolute positioning so it doesn't break layout
+                const pdfTemplate = document.getElementById('pdfTemplate');
+                pdfTemplate.style.display = 'block';
+                pdfTemplate.style.position = 'absolute';
+                pdfTemplate.style.left = '-9999px';
+
+                const targetElement = document.getElementById('pdfContent');
+
+                html2pdf().set({
+                    margin: 10,
+                    filename: 'SnackTrack_Plan.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                }).from(targetElement).save().then(() => {
+                    pdfTemplate.style.display = 'none';
+                    this.showSnackbar('PDF Downloaded Successfully!');
+                });
+            },
+
+            quickAddFromChat(encodedJson) {
+                try {
+                    const action = JSON.parse(decodeURIComponent(encodedJson));
+                    const logEntry = {
+                        id: this.generateId(),
+                        food_name: (action.food || 'AI Meal') + ' (AI)',
+                        calories: action.cals || 0,
+                        protein_g: action.protein || 0,
+                        carbs_g: action.carbs || 0,
+                        fat_g: action.fat || 0,
+                        serving_size_logged: 'Estimated',
+                        timestamp: new Date().toISOString(),
+                        date_string: this.currentDate
+                    };
+                    this.foodLogs.push(logEntry);
+                    
+                    this.saveAllLocal();
+                    this.syncToCloud();
+                    this.updateDashboard();
+                    this.showSnackbar(action.food + ' logged to diary!');
+                } catch(e) {
+                    this.showSnackbar('Failed to log AI meal');
+                }
             },
 
             async sendMessage() {
@@ -1485,8 +1644,15 @@
                 const loadingId = this.generateId();
                 this.chatHistory.push({ role: 'assistant', content: 'Thinking...', id: loadingId });
                 this.renderChatMessages();
+                this.saveAllLocal();
 
                 try {
+                    // Pull last 7 days of logs to attach for AI history
+                    const weekAgo = new Date();
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    const weekAgoString = weekAgo.toISOString().split('T')[0];
+                    const recentLogs = this.foodLogs.filter(log => log.date_string >= weekAgoString);
+
                     const url = new URL(this.workerUrl);
                     url.pathname = '/ask';
 
@@ -1496,7 +1662,8 @@
                         body: JSON.stringify({
                             message: message,
                             context: this.contextFields,
-                            documents: this.documents
+                            documents: this.documents,
+                            historyLogs: recentLogs
                         })
                     });
 
@@ -1505,6 +1672,7 @@
                         // replace "Thinking..."
                         this.chatHistory.pop();
                         this.chatHistory.push({ role: 'assistant', content: data.response });
+                        this.saveAllLocal();
                         this.syncToCloud();
                     } else {
                         throw new Error('Chat failed');

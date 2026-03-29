@@ -73,9 +73,12 @@ export default {
 
       // route: /ask (POST)
       if (path === "/ask" && request.method === "POST") {
-        const { message, context, documents } = await request.json();
+        const { message, context, documents, historyLogs } = await request.json();
         
-        let systemPrompt = "You are a friendly, expert nutritionist and health coach for the SnackTrack app. Answer the user's questions clearly and concisely. Do NOT output JSON. Output normal markdown conversational text.";
+        let systemPrompt = "You are a friendly, expert nutritionist and health coach for the SnackTrack app. Answer the user's questions clearly and concisely. Format responses in Markdown.";
+        systemPrompt += "\n\nIf the user specifies they ate or drank something, estimate the macronutrients and append the following EXACT format invisibly at the end of your message so the app can log it:\n";
+        systemPrompt += `<log_action>{"food": "Name of food", "cals": 300, "protein": 15, "carbs": 30, "fat": 10}</log_action>`;
+        systemPrompt += "\nOnly output the log_action tag if they explicitly state they consumed something.";
         
         let userPrompt = "";
         if (context && context.length > 0) {
@@ -90,6 +93,14 @@ export default {
                 userPrompt += `Document ${idx + 1} (${doc.name}):\n${doc.text.substring(0, 2000)}\n\n`;
             });
         }
+
+        if (historyLogs && historyLogs.length > 0) {
+            userPrompt += "USER PAST 7 DAYS FOOD LOG RECENT HISTORY:\n";
+            historyLogs.forEach(log => {
+                userPrompt += `- ${log.date_string}: ${log.food_name} (${log.calories} cals)\n`;
+            });
+            userPrompt += "\n";
+        }
         
         userPrompt += "USER QUESTION: " + message;
 
@@ -100,6 +111,29 @@ export default {
             ]
         });
 
+        return new Response(JSON.stringify(response), { headers: corsHeaders });
+      }
+
+      // route: /recap (POST)
+      if (path === "/recap" && request.method === "POST") {
+        const { date, goals, logs } = await request.json();
+        
+        const systemPrompt = "You are an AI Dietitian for the SnackTrack app. The user is sharing their daily macros recap with their friends. Write a highly enthusiastic, incredibly short (max 2 sentences) custom message celebrating or analyzing their progress for the day based on their logs and goals. Include emojis.";
+        
+        const userPrompt = `
+        Date: ${date}
+        Goals: ${goals.daily_calories} kcal, ${goals.protein_g}g protein
+        Total Eaten: ${logs.reduce((c,l)=>c+l.calories,0)} kcal, ${logs.reduce((p,l)=>p+l.protein_g,0)}g protein
+        Notable foods: ${logs.map(l=>l.food_name).join(", ")}
+        `;
+
+        const response = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ]
+        });
+        
         return new Response(JSON.stringify(response), { headers: corsHeaders });
       }
 
