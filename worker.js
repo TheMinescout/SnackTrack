@@ -57,6 +57,52 @@ export default {
         }
       }
 
+      // route: /summarize (POST)
+      if (path === "/summarize" && request.method === "POST") {
+        const { text } = await request.json();
+        if (!text) return new Response(JSON.stringify({ error: "No text provided" }), { status: 400, headers: corsHeaders });
+        
+        const response = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+            messages: [
+                { role: 'system', content: 'You are an AI assistant. Summarize the following nutritional document/blood test in exactly 3 concise bullet points. Focus only on actionable health metrics.' },
+                { role: 'user', content: text.substring(0, 4000) }
+            ]
+        });
+        return new Response(JSON.stringify(response), { headers: corsHeaders });
+      }
+
+      // route: /ask (POST)
+      if (path === "/ask" && request.method === "POST") {
+        const { message, context, documents } = await request.json();
+        
+        let systemPrompt = "You are a friendly, expert nutritionist and health coach for the SnackTrack app. Answer the user's questions clearly and concisely. Do NOT output JSON. Output normal markdown conversational text.";
+        
+        let userPrompt = "";
+        if (context && context.length > 0) {
+            userPrompt += "USER PHYSIOLOGICAL CONTEXT:\n";
+            context.forEach(item => { userPrompt += `- ${item.key}: ${item.value}\n`; });
+            userPrompt += "\n";
+        }
+        
+        if (documents && documents.length > 0) {
+            userPrompt += "UPLOADED USER DOCUMENTS:\n";
+            documents.forEach((doc, idx) => {
+                userPrompt += `Document ${idx + 1} (${doc.name}):\n${doc.text.substring(0, 2000)}\n\n`;
+            });
+        }
+        
+        userPrompt += "USER QUESTION: " + message;
+
+        const response = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ]
+        });
+
+        return new Response(JSON.stringify(response), { headers: corsHeaders });
+      }
+
       // route: /ai (POST)
       // Accept /ai and /
       if ((path === "/ai" || path === "/ai/" || path === "/") && request.method === "POST") {
@@ -64,15 +110,15 @@ export default {
 
         let systemPrompt = `You are an expert nutritionist AI. 
 Extract the daily nutritional targets and create a brief, encouraging summary.
-You MUST output ONLY valid JSON in the exact format:
+You MUST output ONLY valid JSON in the exact format below, with NO markdown wrappers or extra text:
 {
-  "daily_calories": number,
-  "protein_g": number,
-  "carbs_g": number,
-  "fat_g": number,
+  "daily_calories": 2000,
+  "protein_g": 150,
+  "carbs_g": 250,
+  "fat_g": 65,
   "ai_summary": "A 2-3 sentence summary of the nutritional guidance."
 }
-If calculating from physical context, use standard metabolic formulas. Ensure the JSON is properly formatted.`;
+If calculating from physical context, use standard metabolic formulas. Ensure the output begins with { and ends with }.`;
 
         let userPrompt = "";
         

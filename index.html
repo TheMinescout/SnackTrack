@@ -1033,9 +1033,11 @@
                         Add Data Field (e.g. Weight, Goal)
                     </button>
 
-                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('pdfInput').click()" style="padding: 20px;">
+                    <div id="documentsList" style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;"></div>
+
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('pdfInput').click()" style="padding: 20px; margin-top: 16px;">
                         <span class="material-icons" style="font-size: 32px; color: var(--md-sys-color-primary); margin-bottom: 8px;">picture_as_pdf</span>
-                        <div style="font-weight: 500; font-size: 14px;">Optional: Click to attach PDF</div>
+                        <div style="font-weight: 500; font-size: 14px;">Click to upload & summarize PDF</div>
                         <div id="pdfFilename" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;"></div>
                     </div>
                     <input type="file" id="pdfInput" accept=".pdf" style="display: none;" onchange="app.handlePdfUpload(event)">
@@ -1048,6 +1050,21 @@
                     <div id="pdfProcessing" class="hidden" style="margin-top: 16px; text-align: center;">
                         <div class="spinner"></div>
                         <p style="margin-top: 16px; color: var(--md-sys-color-on-surface-variant);">Analyzing logic via Cloudflare AI...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ask AI View -->
+            <div id="askView" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
+                <div class="card" style="flex: 1; display: flex; flex-direction: column; margin-bottom: 16px; padding: 0; overflow: hidden; height: calc(100vh - 160px);">
+                    <div style="padding: 16px; border-bottom: 1px solid var(--md-sys-color-surface-variant); display: flex; align-items: center; gap: 8px;">
+                        <span class="material-icons" style="color: var(--md-sys-color-primary);">smart_toy</span>
+                        <div style="font-weight: 500;">Ask AI Dietitian</div>
+                    </div>
+                    <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;"></div>
+                    <div style="padding: 12px; border-top: 1px solid var(--md-sys-color-surface-variant); display: flex; gap: 8px; background: var(--md-sys-color-surface);">
+                        <input type="text" id="chatInput" placeholder="Ask about your diet..." style="flex: 1; padding: 12px; border-radius: 24px; border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface);" onkeypress="if(event.key === 'Enter') app.sendMessage()">
+                        <button class="icon-btn" onclick="app.sendMessage()" style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary);"><span class="material-icons">send</span></button>
                     </div>
                 </div>
             </div>
@@ -1067,6 +1084,10 @@
             <div class="nav-item" onclick="app.navigate('goals')">
                 <span class="material-icons">flag</span>
                 Goals
+            </div>
+            <div class="nav-item" onclick="app.navigate('ask')">
+                <span class="material-icons">forum</span>
+                Ask
             </div>
         </div>
     </div>
@@ -1169,6 +1190,8 @@
             },
             foodLogs: [],
             contextFields: [],
+            documents: [],
+            chatHistory: [],
             pendingPdfText: null,
             currentView: 'dashboard',
             scanner: null,
@@ -1355,12 +1378,16 @@
                             if (data.goals) this.goals = data.goals;
                             if (data.foodLogs) this.foodLogs = data.foodLogs;
                             if (data.contextFields) this.contextFields = data.contextFields;
+                            if (data.documents) this.documents = data.documents;
+                            if (data.chatHistory) this.chatHistory = data.chatHistory;
                             
                             localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
                             localStorage.setItem('food_logs', JSON.stringify(this.foodLogs));
                             
                             this.updateDashboard();
                             this.renderContextFields();
+                            this.renderDocuments();
+                            this.renderChatMessages();
                             
                             document.getElementById('goalCalories').value = this.goals.daily_calories;
                             document.getElementById('goalProtein').value = this.goals.protein_g;
@@ -1382,7 +1409,9 @@
                     const payload = {
                         goals: this.goals,
                         foodLogs: this.foodLogs,
-                        contextFields: this.contextFields
+                        contextFields: this.contextFields,
+                        documents: this.documents,
+                        chatHistory: this.chatHistory
                     };
                     const url = new URL(this.workerUrl);
                     url.pathname = '/sync';
@@ -1394,6 +1423,97 @@
                         headers: { 'Content-Type': 'application/json' }
                     });
                 } catch(e) { console.error("Cloud sync failed", e); }
+            },
+
+            renderDocuments() {
+                const list = document.getElementById('documentsList');
+                if (!this.documents || this.documents.length === 0) {
+                    list.innerHTML = '';
+                    return;
+                }
+                list.innerHTML = this.documents.map(doc => `
+                    <div style="background: var(--md-sys-color-surface-variant); padding: 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="font-size: 14px;">${doc.name}</strong>
+                            <button class="icon-btn" onclick="app.deleteDocument('${doc.id}')" style="color: var(--md-sys-color-error); padding: 4px; height: auto; width: auto;"><span class="material-icons" style="font-size: 18px;">delete</span></button>
+                        </div>
+                        <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); white-space: pre-line;">${doc.summary}</div>
+                    </div>
+                `).join('');
+            },
+
+            deleteDocument(id) {
+                this.documents = this.documents.filter(d => d.id !== id);
+                this.renderDocuments();
+                this.syncToCloud();
+            },
+
+            renderChatMessages() {
+                const container = document.getElementById('chatMessages');
+                if (!container) return;
+                
+                let html = `<div style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); padding: 12px 16px; border-radius: 16px 16px 16px 4px; max-width: 85%; align-self: flex-start; font-size: 14px;">
+                    Hello! I am your personal AI dietitian. Ask me anything about your diet or the documents you've uploaded!
+                </div>`;
+
+                this.chatHistory.forEach(msg => {
+                    if (msg.role === 'user') {
+                        html += `<div style="background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); padding: 12px 16px; border-radius: 16px 16px 4px 16px; max-width: 85%; align-self: flex-end; font-size: 14px; white-space: pre-wrap;">${msg.content}</div>`;
+                    } else {
+                        html += `<div style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); padding: 12px 16px; border-radius: 16px 16px 16px 4px; max-width: 85%; align-self: flex-start; font-size: 14px; white-space: pre-wrap;">${msg.content}</div>`;
+                    }
+                });
+                
+                container.innerHTML = html;
+                container.scrollTop = container.scrollHeight;
+            },
+
+            async sendMessage() {
+                const input = document.getElementById('chatInput');
+                const message = input.value.trim();
+                if (!message) return;
+                
+                if (!this.workerUrl) {
+                    this.showSnackbar('Please configure your Cloudflare Worker URL first.');
+                    return;
+                }
+
+                input.value = '';
+                this.chatHistory.push({ role: 'user', content: message });
+                this.renderChatMessages();
+
+                const loadingId = this.generateId();
+                this.chatHistory.push({ role: 'assistant', content: 'Thinking...', id: loadingId });
+                this.renderChatMessages();
+
+                try {
+                    const url = new URL(this.workerUrl);
+                    url.pathname = '/ask';
+
+                    const res = await fetch(url.toString(), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: message,
+                            context: this.contextFields,
+                            documents: this.documents
+                        })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        // replace "Thinking..."
+                        this.chatHistory.pop();
+                        this.chatHistory.push({ role: 'assistant', content: data.response });
+                        this.syncToCloud();
+                    } else {
+                        throw new Error('Chat failed');
+                    }
+                } catch (e) {
+                    this.chatHistory.pop();
+                    this.showSnackbar('Failed to get AI response');
+                }
+                this.renderChatMessages();
             },
 
             closeOnboarding() {
@@ -1412,6 +1532,7 @@
                 document.getElementById('dashboardView').classList.add('hidden');
                 document.getElementById('logView').classList.add('hidden');
                 document.getElementById('goalsView').classList.add('hidden');
+                document.getElementById('askView').classList.add('hidden');
 
                 // Show selected view
                 const viewEl = document.getElementById(view + 'View');
@@ -1956,6 +2077,10 @@
             },
 
             async processPdf(file) {
+                if (!this.workerUrl) {
+                    this.showSnackbar('Please configure your Cloudflare Worker URL first.');
+                    return;
+                }
                 document.getElementById('pdfProcessing').classList.remove('hidden');
                 document.getElementById('pdfProcessing').querySelector('p').textContent = "Extracting text locally...";
                 
@@ -1972,14 +2097,37 @@
                         fullText += pageText + '\n';
                     }
 
-                    this.pendingPdfText = fullText;
-                    this.showSnackbar('PDF loaded! Press Generate Goals.');
+                    document.getElementById('pdfProcessing').querySelector('p').textContent = "Summarizing with AI...";
+
+                    const url = new URL(this.workerUrl);
+                    url.pathname = '/summarize';
+                    const res = await fetch(url.toString(), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: fullText.substring(0, 4000) })
+                    });
+                    
+                    if (!res.ok) throw new Error('Summarization failed');
+                    const data = await res.json();
+                    
+                    this.documents.push({
+                        id: this.generateId(),
+                        name: file.name,
+                        text: fullText,
+                        summary: data.response
+                    });
+
+                    this.syncToCloud();
+                    this.renderDocuments();
+
+                    this.showSnackbar('Document added & summarized!');
 
                 } catch (error) {
                     this.showSnackbar('Failed to process PDF');
                     console.error(error);
                 } finally {
                     document.getElementById('pdfProcessing').classList.add('hidden');
+                    document.getElementById('pdfFilename').textContent = '';
                 }
             },
 
@@ -1991,7 +2139,8 @@
                 document.getElementById('pdfProcessing').classList.remove('hidden');
                 document.getElementById('pdfProcessing').querySelector('p').textContent = "Analyzing logic via Cloudflare AI...";
                 
-                await this.analyzeWithAI(this.pendingPdfText || "");
+                const combinedText = this.documents.map(d => d.text).join('\n\n');
+                await this.analyzeWithAI(combinedText);
                 
                 document.getElementById('pdfProcessing').classList.add('hidden');
             },
@@ -2034,15 +2183,18 @@
                     // Parse JSON response
                     let parsedGoals;
                     try {
-                        parsedGoals = JSON.parse(aiResponse);
-                    } catch (e) {
-                        // Try to extract JSON from response
                         const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
                         if (jsonMatch) {
                             parsedGoals = JSON.parse(jsonMatch[0]);
                         } else {
-                            throw new Error('Could not parse AI response output');
+                            parsedGoals = JSON.parse(aiResponse);
                         }
+                        
+                        if (!parsedGoals || typeof parsedGoals.daily_calories !== 'number') {
+                            throw new Error('Missing core metrics in AI response');
+                        }
+                    } catch (e) {
+                         throw new Error('Could not parse AI response output: ' + e.message);
                     }
 
                     // Update goals
@@ -2069,8 +2221,8 @@
                     this.showSnackbar('Goals extracted from PDF successfully!');
 
                 } catch (error) {
-                    this.showSnackbar('AI analysis failed. Please check your credentials.');
-                    console.error(error);
+                    this.showSnackbar('AI analysis failed. Please try again.');
+                    console.error("AI Error:", error);
                 }
             },
 
