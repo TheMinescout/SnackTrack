@@ -1271,6 +1271,8 @@
             cloudLoaded: false,
             syncState: 'offline',
             activeSyncRequests: 0,
+            syncRetryCount: 0,
+            syncRetryTimer: null,
 
             init() {
                 // Load saved credentials
@@ -1279,6 +1281,10 @@
                 
                 if (savedWorkerUrl) this.workerUrl = savedWorkerUrl;
                 if (savedSyncId) this.syncId = savedSyncId;
+                if (this.workerUrl && !this.syncId) {
+                    this.syncId = this.generateId();
+                    localStorage.setItem('cf_sync_id', this.syncId);
+                }
 
                 if (localStorage.getItem('onboarded')) {
                     this.showMainApp();
@@ -1339,7 +1345,7 @@
 
             login() {
                 const workerUrl = document.getElementById('workerUrlInput').value.trim();
-                const syncId = document.getElementById('syncIdInput').value.trim();
+                const syncId = document.getElementById('syncIdInput').value.trim() || this.generateId();
 
                 if (!workerUrl || !workerUrl.startsWith('http')) {
                     this.showSnackbar('Please enter a valid Worker URL (e.g. https://snacktrack.workers.dev)');
@@ -1349,13 +1355,12 @@
                 this.workerUrl = workerUrl;
                 localStorage.setItem('cf_worker_url', workerUrl);
 
-                if (syncId) {
-                    this.syncId = syncId;
-                    localStorage.setItem('cf_sync_id', syncId);
-                }
+                this.syncId = syncId;
+                localStorage.setItem('cf_sync_id', syncId);
+                document.getElementById('syncIdInput').value = syncId;
 
                 this.skipLogin(); // Proceed
-                this.showSnackbar('Settings saved successfully!');
+                this.showSnackbar('Settings saved successfully! Cloud sync profile is ready.');
             },
 
             skipLogin() {
@@ -1509,6 +1514,17 @@
                     : `<span class="material-icons">${iconName}</span>${defaultLabel}`;
             },
 
+            scheduleSyncRetry() {
+                if (!this.workerUrl || !this.syncId || !navigator.onLine) return;
+                if (this.syncRetryTimer) return;
+                const delay = Math.min(5000 * Math.pow(2, this.syncRetryCount), 60000);
+                this.syncRetryTimer = setTimeout(() => {
+                    this.syncRetryTimer = null;
+                    this.syncToCloud({ awaitAck: false });
+                }, delay);
+                this.syncRetryCount = Math.min(this.syncRetryCount + 1, 6);
+            },
+
             async fetchFromCloud() {
                 if (!this.workerUrl || !this.syncId) return;
                 try {
@@ -1598,10 +1614,13 @@
                         pushPromise
                             .then((response) => {
                                 this.setSyncState(response.ok ? 'synced' : 'error');
+                                if (response.ok) this.syncRetryCount = 0;
+                                if (!response.ok) this.scheduleSyncRetry();
                             })
                             .catch((e) => {
                                 console.error("Cloud push failed", e);
                                 this.setSyncState(navigator.onLine ? 'error' : 'offline');
+                                this.scheduleSyncRetry();
                             })
                             .finally(() => {
                                 clearTimeout(timeout);
@@ -1613,10 +1632,13 @@
                     const response = await pushPromise;
                     clearTimeout(timeout);
                     this.setSyncState(response.ok ? 'synced' : 'error');
+                    if (response.ok) this.syncRetryCount = 0;
+                    if (!response.ok) this.scheduleSyncRetry();
                     return response.ok;
                 } catch(e) {
                     console.error("Cloud sync logic failed", e);
                     this.setSyncState(navigator.onLine ? 'error' : 'offline');
+                    this.scheduleSyncRetry();
                     return false;
                 } finally {
                     if (awaitAck) {
