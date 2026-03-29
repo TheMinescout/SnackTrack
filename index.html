@@ -1271,8 +1271,6 @@
             cloudLoaded: false,
             syncState: 'offline',
             activeSyncRequests: 0,
-            syncRetryCount: 0,
-            syncRetryTimer: null,
 
             init() {
                 // Load saved credentials
@@ -1514,17 +1512,6 @@
                     : `<span class="material-icons">${iconName}</span>${defaultLabel}`;
             },
 
-            scheduleSyncRetry() {
-                if (!this.workerUrl || !this.syncId || !navigator.onLine) return;
-                if (this.syncRetryTimer) return;
-                const delay = Math.min(5000 * Math.pow(2, this.syncRetryCount), 60000);
-                this.syncRetryTimer = setTimeout(() => {
-                    this.syncRetryTimer = null;
-                    this.syncToCloud({ awaitAck: false });
-                }, delay);
-                this.syncRetryCount = Math.min(this.syncRetryCount + 1, 6);
-            },
-
             async fetchFromCloud() {
                 if (!this.workerUrl || !this.syncId) return;
                 try {
@@ -1583,9 +1570,8 @@
             },
 
             async syncToCloud(options = {}) {
+                if (!this.workerUrl || !this.syncId || !this.cloudLoaded) return;
                 const awaitAck = options.awaitAck === true;
-                if (!this.workerUrl || !this.syncId) return null;
-                if (!this.cloudLoaded && !awaitAck) return null;
                 try {
                     const payload = {
                         lastUpdated: parseInt(localStorage.getItem('last_updated')) || Date.now(),
@@ -1601,44 +1587,33 @@
 
                     this.activeSyncRequests += 1;
                     this.setSyncState('syncing');
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 8000);
                     const pushPromise = fetch(url.toString(), {
                         method: 'POST',
                         body: JSON.stringify(payload),
-                        headers: { 'Content-Type': 'application/json' },
-                        signal: controller.signal
+                        headers: { 'Content-Type': 'application/json' }
                     });
 
                     if (!awaitAck) {
                         pushPromise
                             .then((response) => {
                                 this.setSyncState(response.ok ? 'synced' : 'error');
-                                if (response.ok) this.syncRetryCount = 0;
-                                if (!response.ok) this.scheduleSyncRetry();
                             })
                             .catch((e) => {
                                 console.error("Cloud push failed", e);
                                 this.setSyncState(navigator.onLine ? 'error' : 'offline');
-                                this.scheduleSyncRetry();
                             })
                             .finally(() => {
-                                clearTimeout(timeout);
                                 this.activeSyncRequests = Math.max(0, this.activeSyncRequests - 1);
                             });
                         return;
                     }
 
                     const response = await pushPromise;
-                    clearTimeout(timeout);
                     this.setSyncState(response.ok ? 'synced' : 'error');
-                    if (response.ok) this.syncRetryCount = 0;
-                    if (!response.ok) this.scheduleSyncRetry();
                     return response.ok;
                 } catch(e) {
                     console.error("Cloud sync logic failed", e);
                     this.setSyncState(navigator.onLine ? 'error' : 'offline');
-                    this.scheduleSyncRetry();
                     return false;
                 } finally {
                     if (awaitAck) {
@@ -2386,19 +2361,14 @@
                 this.goals.fat_g = parseInt(document.getElementById('goalFat').value) || 67;
 
                 this.setButtonLoading('saveGoalsBtn', true, 'Saving to cloud...', 'Save Goals', 'save');
-                try {
-                    this.saveAllLocal();
-                    const synced = await this.syncToCloud({ awaitAck: true });
-                    this.updateDashboard();
-                    if (synced === false) {
-                        this.showSnackbar('Goals saved locally. Cloud sync will retry automatically.');
-                    } else if (synced === null) {
-                        this.showSnackbar('Goals saved locally. Add a Sync ID to enable cloud backup.');
-                    } else {
-                        this.showSnackbar('Goals saved successfully and backed up to cloud!');
-                    }
-                } finally {
-                    this.setButtonLoading('saveGoalsBtn', false, 'Saving to cloud...', 'Save Goals', 'save');
+                this.saveAllLocal();
+                const synced = await this.syncToCloud({ awaitAck: true });
+                this.updateDashboard();
+                this.setButtonLoading('saveGoalsBtn', false, 'Saving to cloud...', 'Save Goals', 'save');
+                if (synced === false) {
+                    this.showSnackbar('Goals saved locally. Cloud sync will retry automatically.');
+                } else {
+                    this.showSnackbar('Goals saved successfully and backed up to cloud!');
                 }
             },
 
@@ -2588,8 +2558,6 @@
 
                     if (synced === false) {
                         this.showSnackbar('Goals generated and saved locally. Cloud sync will retry automatically.');
-                    } else if (synced === null) {
-                        this.showSnackbar('Goals generated and saved locally. Add a Sync ID to enable cloud backup.');
                     } else {
                         this.showSnackbar('Goals extracted and backed up to cloud!');
                     }

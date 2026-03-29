@@ -22,35 +22,21 @@ export default {
     const hasKV = !!env.SNACKTRACK_KV;
     const hasAI = !!env.AI;
 
-    const hasKnownSyncShape = (data) => (
+    const isValidSyncPayload = (data) => (
       !!data &&
       typeof data === "object" &&
-      (
-        Object.prototype.hasOwnProperty.call(data, "goals") ||
-        Object.prototype.hasOwnProperty.call(data, "foodLogs") ||
-        Object.prototype.hasOwnProperty.call(data, "contextFields") ||
-        Object.prototype.hasOwnProperty.call(data, "documents") ||
-        Object.prototype.hasOwnProperty.call(data, "chatHistory")
-      )
+      data.goals &&
+      typeof data.goals === "object" &&
+      Array.isArray(data.foodLogs) &&
+      Array.isArray(data.contextFields) &&
+      Array.isArray(data.documents) &&
+      Array.isArray(data.chatHistory)
     );
-
-    const normalizeSyncPayload = (data) => ({
-      lastUpdated: Number(data?.lastUpdated) || Date.now(),
-      goals: (data?.goals && typeof data.goals === "object") ? data.goals : {},
-      foodLogs: Array.isArray(data?.foodLogs) ? data.foodLogs : [],
-      contextFields: Array.isArray(data?.contextFields) ? data.contextFields : [],
-      documents: Array.isArray(data?.documents) ? data.documents : [],
-      chatHistory: Array.isArray(data?.chatHistory) ? data.chatHistory : []
-    });
 
     const safeKVGet = async (key) => {
       if (!hasKV) return null;
       try {
-        const jsonValue = await env.SNACKTRACK_KV.get(key, { type: "json" });
-        if (jsonValue && typeof jsonValue === "object") return jsonValue;
-        const rawValue = await env.SNACKTRACK_KV.get(key);
-        if (!rawValue) return null;
-        return JSON.parse(rawValue);
+        return await env.SNACKTRACK_KV.get(key, { type: "json" });
       } catch {
         return null;
       }
@@ -93,13 +79,13 @@ export default {
 
         if (request.method === "GET") {
           const primaryData = await safeKVGet(profileId);
-          if (hasKnownSyncShape(primaryData)) {
-            return new Response(JSON.stringify(normalizeSyncPayload(primaryData)), { headers: corsHeaders });
+          if (isValidSyncPayload(primaryData)) {
+            return new Response(JSON.stringify(primaryData), { headers: corsHeaders });
           }
 
           const backupData = await safeKVGet(`${profileId}:backup`);
-          if (hasKnownSyncShape(backupData)) {
-            return new Response(JSON.stringify(normalizeSyncPayload(backupData)), { headers: corsHeaders });
+          if (isValidSyncPayload(backupData)) {
+            return new Response(JSON.stringify(backupData), { headers: corsHeaders });
           }
 
           return new Response(JSON.stringify(null), { headers: corsHeaders });
@@ -113,11 +99,14 @@ export default {
             return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: corsHeaders });
           }
 
-          if (!hasKnownSyncShape(data)) {
+          if (!isValidSyncPayload(data)) {
             return new Response(JSON.stringify({ error: "Invalid sync payload shape" }), { status: 400, headers: corsHeaders });
           }
 
-          const normalized = normalizeSyncPayload(data);
+          const normalized = {
+            ...data,
+            lastUpdated: Number(data.lastUpdated) || Date.now()
+          };
           const primarySaved = await safeKVPut(profileId, normalized);
           const backupSaved = await safeKVPut(`${profileId}:backup`, normalized);
 
