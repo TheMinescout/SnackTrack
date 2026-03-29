@@ -19,6 +19,52 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const hasKV = !!env.SNACKTRACK_KV;
+    const hasAI = !!env.AI;
+
+    const hasKnownSyncShape = (data) => (
+      !!data &&
+      typeof data === "object" &&
+      (
+        Object.prototype.hasOwnProperty.call(data, "goals") ||
+        Object.prototype.hasOwnProperty.call(data, "foodLogs") ||
+        Object.prototype.hasOwnProperty.call(data, "contextFields") ||
+        Object.prototype.hasOwnProperty.call(data, "documents") ||
+        Object.prototype.hasOwnProperty.call(data, "chatHistory")
+      )
+    );
+
+    const normalizeSyncPayload = (data) => ({
+      lastUpdated: Number(data?.lastUpdated) || Date.now(),
+      goals: (data?.goals && typeof data.goals === "object") ? data.goals : {},
+      foodLogs: Array.isArray(data?.foodLogs) ? data.foodLogs : [],
+      contextFields: Array.isArray(data?.contextFields) ? data.contextFields : [],
+      documents: Array.isArray(data?.documents) ? data.documents : [],
+      chatHistory: Array.isArray(data?.chatHistory) ? data.chatHistory : []
+    });
+
+    const safeKVGet = async (key) => {
+      if (!hasKV) return null;
+      try {
+        const jsonValue = await env.SNACKTRACK_KV.get(key, { type: "json" });
+        if (jsonValue && typeof jsonValue === "object") return jsonValue;
+        const rawValue = await env.SNACKTRACK_KV.get(key);
+        if (!rawValue) return null;
+        return JSON.parse(rawValue);
+      } catch {
+        return null;
+      }
+    };
+
+    const safeKVPut = async (key, value) => {
+      if (!hasKV) return false;
+      try {
+        await env.SNACKTRACK_KV.put(key, JSON.stringify(value));
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
     // 1. Handle CORS preflight requests
     if (request.method === "OPTIONS") {
@@ -46,19 +92,48 @@ export default {
         }
 
         if (request.method === "GET") {
-          const data = await env.SNACKTRACK_KV.get(profileId, { type: "json" });
-          return new Response(JSON.stringify(data || null), { headers: corsHeaders });
+          const primaryData = await safeKVGet(profileId);
+          if (hasKnownSyncShape(primaryData)) {
+            return new Response(JSON.stringify(normalizeSyncPayload(primaryData)), { headers: corsHeaders });
+          }
+
+          const backupData = await safeKVGet(`${profileId}:backup`);
+          if (hasKnownSyncShape(backupData)) {
+            return new Response(JSON.stringify(normalizeSyncPayload(backupData)), { headers: corsHeaders });
+          }
+
+          return new Response(JSON.stringify(null), { headers: corsHeaders });
         }
 
         if (request.method === "POST") {
-          const data = await request.json();
-          await env.SNACKTRACK_KV.put(profileId, JSON.stringify(data));
-          return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+          let data;
+          try {
+            data = await request.json();
+          } catch {
+            return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: corsHeaders });
+          }
+
+          if (!hasKnownSyncShape(data)) {
+            return new Response(JSON.stringify({ error: "Invalid sync payload shape" }), { status: 400, headers: corsHeaders });
+          }
+
+          const normalized = normalizeSyncPayload(data);
+          const primarySaved = await safeKVPut(profileId, normalized);
+          const backupSaved = await safeKVPut(`${profileId}:backup`, normalized);
+
+          if (!primarySaved && !backupSaved) {
+            return new Response(JSON.stringify({ success: false, fallback: "local_save_only" }), { status: 503, headers: corsHeaders });
+          }
+
+          return new Response(JSON.stringify({ success: true, backupSaved }), { headers: corsHeaders });
         }
       }
 
       // route: /summarize (POST)
       if (path === "/summarize" && request.method === "POST") {
+        if (!hasAI) {
+          return new Response(JSON.stringify({ error: "AI binding is not configured" }), { status: 503, headers: corsHeaders });
+        }
         const { text } = await request.json();
         if (!text) return new Response(JSON.stringify({ error: "No text provided" }), { status: 400, headers: corsHeaders });
         
@@ -73,6 +148,9 @@ export default {
 
       // route: /ask (POST)
       if (path === "/ask" && request.method === "POST") {
+        if (!hasAI) {
+          return new Response(JSON.stringify({ error: "AI binding is not configured" }), { status: 503, headers: corsHeaders });
+        }
         const { message, context, documents, historyLogs } = await request.json();
         
         let systemPrompt = "You are a friendly, expert nutritionist and health coach for the SnackTrack app. Answer the user's questions clearly and concisely. Format responses in Markdown.";
@@ -116,6 +194,9 @@ export default {
 
       // route: /recap (POST)
       if (path === "/recap" && request.method === "POST") {
+        if (!hasAI) {
+          return new Response(JSON.stringify({ error: "AI binding is not configured" }), { status: 503, headers: corsHeaders });
+        }
         const { date, goals, logs } = await request.json();
         
         const systemPrompt = "You are an AI Dietitian for the SnackTrack app. The user is sharing their daily macros recap with their friends. Write a highly enthusiastic, incredibly short (max 2 sentences) custom message celebrating or analyzing their progress for the day based on their logs and goals. Include emojis.";
@@ -140,6 +221,9 @@ export default {
       // route: /ai (POST)
       // Accept /ai and /
       if ((path === "/ai" || path === "/ai/" || path === "/") && request.method === "POST") {
+        if (!hasAI) {
+          return new Response(JSON.stringify({ error: "AI binding is not configured" }), { status: 503, headers: corsHeaders });
+        }
         const { text, context } = await request.json();
 
         let systemPrompt = `You are an expert nutritionist AI. 

@@ -304,6 +304,56 @@
             justify-content: center;
         }
 
+        .btn-loading-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .sync-indicator {
+            position: fixed;
+            right: 14px;
+            bottom: 86px;
+            z-index: 120;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--md-sys-color-surface);
+            box-shadow: var(--md-sys-elevation-2);
+            color: var(--md-sys-color-outline);
+            transition: all 0.2s ease;
+        }
+
+        .sync-indicator.synced {
+            color: #2e7d32;
+            box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.18);
+        }
+
+        .sync-indicator.syncing {
+            color: var(--md-sys-color-primary);
+            animation: pulse 1.2s infinite;
+        }
+
+        .sync-indicator.error {
+            color: var(--md-sys-color-error);
+            box-shadow: 0 0 0 4px rgba(179, 38, 30, 0.2);
+        }
+
+        .sync-indicator.offline {
+            color: var(--md-sys-color-outline);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
         /* Dashboard Grid */
         .dashboard {
             display: grid;
@@ -832,6 +882,9 @@
 
     <!-- Main App -->
     <div id="mainApp" class="app-shell hidden">
+        <div id="cloudSyncIndicator" class="sync-indicator offline" title="Cloud sync is idle">
+            <span class="material-icons" style="font-size: 20px;">cloud_done</span>
+        </div>
         <div class="main-container">
         <!-- Top App Bar -->
         <div class="top-app-bar">
@@ -1012,7 +1065,7 @@
                         <input type="number" id="goalFat" class="text-field" style="border: 1px solid var(--md-sys-color-outline); border-radius: 4px; padding: 12px; width: 100%;">
                     </div>
 
-                    <button class="btn btn-filled btn-full" onclick="app.saveGoals()">
+                    <button id="saveGoalsBtn" class="btn btn-filled btn-full" onclick="app.saveGoals()">
                         <span class="material-icons">save</span>
                         Save Goals
                     </button>
@@ -1043,7 +1096,7 @@
                     </div>
                     <input type="file" id="pdfInput" accept=".pdf" style="display: none;" onchange="app.handlePdfUpload(event)">
                     
-                    <button class="btn btn-filled btn-full" onclick="app.generateFromContextAndPdf()" style="margin-top: 16px;">
+                    <button id="generateGoalsBtn" class="btn btn-filled btn-full" onclick="app.generateFromContextAndPdf()" style="margin-top: 16px;">
                         <span class="material-icons">auto_awesome</span>
                         Generate Goals
                     </button>
@@ -1216,6 +1269,8 @@
             selectedFood: null,
             currentDate: new Date().toISOString().split('T')[0],
             cloudLoaded: false,
+            syncState: 'offline',
+            activeSyncRequests: 0,
 
             init() {
                 // Load saved credentials
@@ -1260,9 +1315,16 @@
                 
                 this.updateDashboard();
                 this.renderContextFields();
+                this.updateCloudSyncIndicator();
+                window.addEventListener('online', () => {
+                    this.setSyncState('syncing');
+                    this.syncToCloud({ awaitAck: false });
+                });
+                window.addEventListener('offline', () => this.setSyncState('offline'));
 
                 // Setup cloud sync + notifications
                 if (this.workerUrl && this.syncId) {
+                    this.setSyncState('syncing');
                     this.fetchFromCloud();
                 }
                 this.setupNotifications();
@@ -1404,6 +1466,49 @@
                 `).join('');
             },
 
+            hasCloudContent(data) {
+                if (!data || typeof data !== 'object') return false;
+                const hasGoals = data.goals && typeof data.goals === 'object' && Object.keys(data.goals).length > 0;
+                const hasLogs = Array.isArray(data.foodLogs) && data.foodLogs.length > 0;
+                const hasContext = Array.isArray(data.contextFields) && data.contextFields.length > 0;
+                const hasDocs = Array.isArray(data.documents) && data.documents.length > 0;
+                const hasChat = Array.isArray(data.chatHistory) && data.chatHistory.length > 0;
+                return hasGoals || hasLogs || hasContext || hasDocs || hasChat;
+            },
+
+            setSyncState(state) {
+                this.syncState = state;
+                this.updateCloudSyncIndicator();
+            },
+
+            updateCloudSyncIndicator() {
+                const indicator = document.getElementById('cloudSyncIndicator');
+                if (!indicator) return;
+                indicator.classList.remove('offline', 'syncing', 'synced', 'error');
+                indicator.classList.add(this.syncState);
+                const icon = indicator.querySelector('.material-icons');
+                if (!icon) return;
+
+                const visualMap = {
+                    offline: { icon: 'cloud_off', title: 'Offline: using local save only' },
+                    syncing: { icon: 'cloud_upload', title: 'Syncing to Cloudflare...' },
+                    synced: { icon: 'cloud_done', title: 'Cloud backup is up to date' },
+                    error: { icon: 'cloud_alert', title: 'Cloud sync failed - local save is still safe' }
+                };
+                const visual = visualMap[this.syncState] || visualMap.offline;
+                icon.textContent = visual.icon;
+                indicator.title = visual.title;
+            },
+
+            setButtonLoading(buttonId, isLoading, loadingLabel, defaultLabel, iconName) {
+                const button = document.getElementById(buttonId);
+                if (!button) return;
+                button.disabled = isLoading;
+                button.innerHTML = isLoading
+                    ? `<span class="btn-loading-spinner" aria-hidden="true"></span>${loadingLabel}`
+                    : `<span class="material-icons">${iconName}</span>${defaultLabel}`;
+            },
+
             async fetchFromCloud() {
                 if (!this.workerUrl || !this.syncId) return;
                 try {
@@ -1414,7 +1519,7 @@
                     const res = await fetch(url.toString());
                     if (res.ok) {
                         const data = await res.json();
-                        if (data) {
+                        if (this.hasCloudContent(data)) {
                             const localUpdated = parseInt(localStorage.getItem('last_updated')) || 0;
                             const cloudUpdated = data.lastUpdated || 0;
                             
@@ -1446,14 +1551,25 @@
                                 // Local state is newer than the cloud (likely a fast offline edit or edge cache delay)
                                 setTimeout(() => this.syncToCloud(), 500);
                             }
+                        } else {
+                            // Cloud is empty/corrupted; local is source of truth and will repopulate cloud.
+                            setTimeout(() => this.syncToCloud({ awaitAck: false }), 200);
                         }
+                        this.setSyncState('synced');
+                    } else {
+                        this.setSyncState('error');
                     }
-                } catch(e) { console.error("Cloud fetch failed", e); }
+                } catch(e) {
+                    console.error("Cloud fetch failed", e);
+                    this.setSyncState(navigator.onLine ? 'error' : 'offline');
+                }
                 finally { this.cloudLoaded = true; }
             },
 
-            async syncToCloud() {
-                if (!this.workerUrl || !this.syncId || !this.cloudLoaded) return;
+            async syncToCloud(options = {}) {
+                const awaitAck = options.awaitAck === true;
+                if (!this.workerUrl || !this.syncId) return null;
+                if (!this.cloudLoaded && !awaitAck) return null;
                 try {
                     const payload = {
                         lastUpdated: parseInt(localStorage.getItem('last_updated')) || Date.now(),
@@ -1467,12 +1583,46 @@
                     url.pathname = '/sync';
                     url.searchParams.set('profileId', this.syncId);
 
-                    fetch(url.toString(), {
+                    this.activeSyncRequests += 1;
+                    this.setSyncState('syncing');
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 8000);
+                    const pushPromise = fetch(url.toString(), {
                         method: 'POST',
                         body: JSON.stringify(payload),
-                        headers: { 'Content-Type': 'application/json' }
-                    }).catch(e => console.error("Cloud push failed", e));
-                } catch(e) { console.error("Cloud sync logic failed", e); }
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: controller.signal
+                    });
+
+                    if (!awaitAck) {
+                        pushPromise
+                            .then((response) => {
+                                this.setSyncState(response.ok ? 'synced' : 'error');
+                            })
+                            .catch((e) => {
+                                console.error("Cloud push failed", e);
+                                this.setSyncState(navigator.onLine ? 'error' : 'offline');
+                            })
+                            .finally(() => {
+                                clearTimeout(timeout);
+                                this.activeSyncRequests = Math.max(0, this.activeSyncRequests - 1);
+                            });
+                        return;
+                    }
+
+                    const response = await pushPromise;
+                    clearTimeout(timeout);
+                    this.setSyncState(response.ok ? 'synced' : 'error');
+                    return response.ok;
+                } catch(e) {
+                    console.error("Cloud sync logic failed", e);
+                    this.setSyncState(navigator.onLine ? 'error' : 'offline');
+                    return false;
+                } finally {
+                    if (awaitAck) {
+                        this.activeSyncRequests = Math.max(0, this.activeSyncRequests - 1);
+                    }
+                }
             },
 
             saveAllLocal() {
@@ -2207,16 +2357,27 @@
                     }).join('');
             },
 
-            saveGoals() {
+            async saveGoals() {
                 this.goals.daily_calories = parseInt(document.getElementById('goalCalories').value) || 2000;
                 this.goals.protein_g = parseInt(document.getElementById('goalProtein').value) || 150;
                 this.goals.carbs_g = parseInt(document.getElementById('goalCarbs').value) || 250;
                 this.goals.fat_g = parseInt(document.getElementById('goalFat').value) || 67;
 
-                this.saveAllLocal();
-                this.syncToCloud();
-                this.updateDashboard();
-                this.showSnackbar('Goals saved successfully!');
+                this.setButtonLoading('saveGoalsBtn', true, 'Saving to cloud...', 'Save Goals', 'save');
+                try {
+                    this.saveAllLocal();
+                    const synced = await this.syncToCloud({ awaitAck: true });
+                    this.updateDashboard();
+                    if (synced === false) {
+                        this.showSnackbar('Goals saved locally. Cloud sync will retry automatically.');
+                    } else if (synced === null) {
+                        this.showSnackbar('Goals saved locally. Add a Sync ID to enable cloud backup.');
+                    } else {
+                        this.showSnackbar('Goals saved successfully and backed up to cloud!');
+                    }
+                } finally {
+                    this.setButtonLoading('saveGoalsBtn', false, 'Saving to cloud...', 'Save Goals', 'save');
+                }
             },
 
             loadGoals() {
@@ -2316,13 +2477,17 @@
                     this.showSnackbar('Please configure your Cloudflare Worker URL first on the login screen.');
                     return;
                 }
+                this.setButtonLoading('generateGoalsBtn', true, 'Generating...', 'Generate Goals', 'auto_awesome');
                 document.getElementById('pdfProcessing').classList.remove('hidden');
                 document.getElementById('pdfProcessing').querySelector('p').textContent = "Analyzing logic via Cloudflare AI...";
-                
-                const combinedText = this.documents.map(d => d.text).join('\n\n');
-                await this.analyzeWithAI(combinedText);
-                
-                document.getElementById('pdfProcessing').classList.add('hidden');
+
+                try {
+                    const combinedText = this.documents.map(d => d.text).join('\n\n');
+                    await this.analyzeWithAI(combinedText);
+                } finally {
+                    document.getElementById('pdfProcessing').classList.add('hidden');
+                    this.setButtonLoading('generateGoalsBtn', false, 'Generating...', 'Generate Goals', 'auto_awesome');
+                }
             },
 
             async analyzeWithAI(text) {
@@ -2396,10 +2561,16 @@
                     }
 
                     this.saveAllLocal();
-                    this.syncToCloud();
+                    const synced = await this.syncToCloud({ awaitAck: true });
                     this.updateDashboard();
 
-                    this.showSnackbar('Goals extracted from PDF successfully!');
+                    if (synced === false) {
+                        this.showSnackbar('Goals generated and saved locally. Cloud sync will retry automatically.');
+                    } else if (synced === null) {
+                        this.showSnackbar('Goals generated and saved locally. Add a Sync ID to enable cloud backup.');
+                    } else {
+                        this.showSnackbar('Goals extracted and backed up to cloud!');
+                    }
 
                 } catch (error) {
                     this.showSnackbar('AI analysis failed. Please try again.');
