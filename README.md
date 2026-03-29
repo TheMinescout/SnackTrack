@@ -1,97 +1,76 @@
-🍏 SnackTrack M3
+# 🥗 SnackTrack M3
 
-A 100% free, self-hosted, mobile-first Single Page Application (SPA) for daily nutrition tracking.
+SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application (SPA) designed to track daily nutritional intake. Built entirely in a single HTML file, it requires no backend database or subscriptions. It utilizes a "Bring Your Own Key" (BYOK) model for Cloudflare AI integration to parse nutritionist PDFs and the OpenFoodFacts API for logging meals.
 
-SnackTrack M3 is designed to look and feel like a premium fitness app (inspired by Garmin Connect) but operates entirely within a single HTML file. It uses your device's local storage to save your food logs and leverages Cloudflare's free Workers AI to read and summarize PDFs from your nutritionist.
+## ✨ Features
 
-No subscriptions, no servers, no ads. Just pure, fast, client-side tracking.
+### 📊 Dashboard (Garmin-Style)
+* **Calorie Speedometer:** A dynamic visual gauge that changes color (Green → Orange → Red) based on your daily consumption.
+* **Macro Tracking:** Individual progress bars for Protein, Carbohydrates, and Fats.
+* **Daily Timeline:** View, review, and delete items from your daily food log.
 
-✨ Features
+### 🔍 Food Logging
+* **Barcode Scanner:** Built-in camera integration to scan food packaging directly from your phone.
+* **Text Search:** Search the OpenFoodFacts database (600k+ products) for quick logging.
+* **Dynamic Serving Sizes:** Calculate macros based on 100g, standard servings, or custom gram amounts.
 
-Garmin-Style Dashboard: Beautiful Material Design 3 (M3) "speedometer" gauges and progress bars to track Calories, Protein, Carbs, and Fats.
+### 🤖 AI-Powered Goal Setting
+* **PDF Upload:** Upload a meal plan or PDF from your nutritionist.
+* **Cloudflare Workers AI:** Uses `llama-3.1-8b-instruct` to automatically extract your daily calorie and macro targets from the document.
+* **Encouraging Summaries:** Generates a brief, AI-driven summary of your nutritional guidelines.
+* **Manual Override:** Easily edit your goals manually if you prefer.
 
-Smart Food Logging: * 🔍 Text Search: Search over 600,000+ products via the free OpenFoodFacts database.
+### 🎨 Material Design 3 (M3)
+* Beautiful, modern UI using Material Design 3 color tokens and elevation shadows.
+* Mobile-first design with a responsive desktop grid layout.
+* Bottom navigation bar for easy, one-handed mobile use.
 
-📷 Barcode Scanner: Use your phone's camera to scan product barcodes instantly.
+---
 
-⚖️ Flexible Serving Sizes: Log by 100g, standard serving size, or custom gram amounts.
+## 🛠️ Architecture & Tech Stack
 
-AI-Powered Nutritionist (BYOK): Upload a diet/nutrition PDF. The app extracts the text locally and securely sends it to Cloudflare's Llama 3.1 AI to automatically extract your daily macro goals and summarize the rules.
+* **Architecture:** 100% Client-Side. Everything runs in your browser.
+* **Storage:** `localStorage`. Your data never leaves your device unless you clear your browser data.
+* **Styling:** Vanilla CSS with M3 variables.
+* **External APIs & Libraries:**
+  * [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) (Llama 3.1)
+  * [OpenFoodFacts API](https://world.openfoodfacts.org/data) (Product search & barcodes)
+  * [PDF.js](https://mozilla.github.io/pdf.js/) (Local PDF parsing)
+  * [HTML5-QRCode](https://github.com/mebjas/html5-qrcode) (Camera scanner)
+  * Google Material Icons & Roboto Font
 
-100% Client-Side: Everything is contained in one index.html file. Data is saved to your browser's localStorage.
+---
 
-PWA-Ready: Add the page to your iOS or Android home screen for a full-screen, native app experience.
+## 🚀 Setup & Installation
 
-🛠️ Tech Stack
+Because SnackTrack M3 is a single file, there is no build step or server setup required. 
 
-Frontend: Vanilla HTML5, CSS3, and JavaScript (Zero build step required).
+### 1. Get the App
+Simply download the `snacktrack-m3.html` file and open it in any modern web browser.
 
-UI Design: Custom CSS utilizing the Material Design 3 color token system and elevation shadows. Google Material Icons.
+### 2. Configure Cloudflare API (Optional, for AI PDF parsing)
+To use the AI goal-extraction features, you need a free Cloudflare account:
+1. Sign up or log in at [Cloudflare](https://dash.cloudflare.com/).
+2. Locate your **Account ID** in your dashboard URL or side panel.
+3. Go to **My Profile > API Tokens**.
+4. Create a new token with **Workers AI** read/write permissions.
+5. Open SnackTrack M3 and enter your Account ID and API Token on the welcome screen.
 
-PDF Parsing: pdf.js (Extracts text directly in the browser).
+### 3. Install as a PWA (Mobile)
+For the best experience, install it as an app on your phone:
+* **iOS (Safari):** Tap the Share button, then select "Add to Home Screen".
+* **Android (Chrome):** Tap the three-dot menu, then select "Add to Home screen".
+The app will now launch in full-screen mode like a native application!
 
-Barcode Scanning: html5-qrcode (Processes camera feed locally).
+---
 
-Food Database: OpenFoodFacts API (Free, open-source).
+## 🔒 Privacy & Data
 
-AI Engine: Cloudflare Workers AI (@cf/meta/llama-3.1-8b-instruct).
+SnackTrack M3 is inherently privacy-preserving. 
+* **No Database:** There is no central database. All food logs, custom goals, and API keys are stored locally in your browser's `localStorage`.
+* **API Calls:** The only data that leaves your device are search queries to OpenFoodFacts and the parsed text of your uploaded PDFs sent directly to your own Cloudflare AI endpoint.
 
-🚀 Getting Started
+---
 
-Because SnackTrack M3 uses a "Bring Your Own Key" (BYOK) model to remain 100% free, you will need to provide your own Cloudflare API credentials to enable the AI PDF Reading feature.
-
-(Note: You can still use the app for manual food tracking without Cloudflare credentials, but the AI PDF upload feature will not work).
-
-Step 1: Get Your Free Cloudflare Credentials
-
-Create a free account at Cloudflare.
-
-Once logged in, look at the URL in your browser. It will look like dash.cloudflare.com/YOUR_ACCOUNT_ID/... Copy that string of letters and numbers—this is your Account ID.
-
-Go to My Profile (top right icon) -> API Tokens.
-
-Click Create Token -> Create Custom Token.
-
-Give it a name (e.g., "SnackTrack AI").
-
-Under Permissions, choose: Account -> Workers AI -> Edit.
-
-Click Continue to summary and then Create Token.
-
-Copy the API Token immediately (it will only be shown once!).
-
-Step 2: Run the App
-
-Download the snacktrack-m3.html file (you can rename it to index.html if you are hosting it).
-
-You can open the file directly in your web browser, or host it for free using GitHub Pages, Vercel, or Cloudflare Pages.
-
-Upon opening the app, you will be greeted by the Login Screen.
-
-Enter your Cloudflare Account ID and API Token.
-
-Start tracking!
-
-Step 3: Install on Your Phone (Recommended)
-
-To get the native app feel:
-
-iOS (Safari): Open the hosted website, tap the "Share" icon at the bottom, and select "Add to Home Screen".
-
-Android (Chrome): Open the hosted website, tap the three-dot menu at the top right, and select "Add to Home screen".
-
-🔒 Privacy & Data Storage
-
-No External Databases: Your daily food logs, goals, and credentials are saved entirely in your browser's localStorage.
-
-Complete Ownership: No developer or third party has access to your dietary data.
-
-Clearing Data: If you clear your browser's cache or tap the "Settings" gear in the top right of the app to log out, your data will be permanently deleted.
-
-🤝 Contributing
-
-This is a single-file project meant to be simple, hackable, and free. Feel free to fork the repository, tweak the Material 3 colors in the :root CSS variables, or add new features!
-
-📄 License
-
-This project is open-source and available under the MIT License. You are free to copy, modify, and distribute it.
+## 📝 License
+This project is open-source and free to modify for personal use.
