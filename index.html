@@ -812,6 +812,11 @@
                 <input type="url" id="workerUrlInput" placeholder=" " autocomplete="off">
                 <label>Cloudflare Worker URL</label>
             </div>
+
+            <div class="text-field">
+                <input type="text" id="syncIdInput" placeholder=" " autocomplete="off">
+                <label>Unique Sync Profile ID</label>
+            </div>
             
             <button class="btn btn-outlined btn-full" onclick="app.login()">
                 <span class="material-icons">link</span>
@@ -842,11 +847,16 @@
         <div class="main-content" id="mainContent">
             <!-- Dashboard View -->
             <div id="dashboardView">
-                <!-- Date Navigator (History) -->
+                <!-- Date Navigator (History) & Share -->
                 <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; margin-bottom: 16px;">
-                    <button class="icon-btn" onclick="app.changeDate(-1)"><span class="material-icons">chevron_left</span></button>
-                    <div style="font-weight: 500;" id="currentDateDisplay">Today</div>
-                    <button class="icon-btn" onclick="app.changeDate(1)"><span class="material-icons">chevron_right</span></button>
+                    <div style="display: flex; align-items: center;">
+                        <button class="icon-btn" onclick="app.changeDate(-1)"><span class="material-icons">chevron_left</span></button>
+                        <div style="font-weight: 500; min-width: 80px; text-align: center;" id="currentDateDisplay">Today</div>
+                        <button class="icon-btn" onclick="app.changeDate(1)"><span class="material-icons">chevron_right</span></button>
+                    </div>
+                    <button class="btn btn-outlined" onclick="app.shareRecap()" style="padding: 6px 12px; font-size: 13px;">
+                        <span class="material-icons" style="font-size: 16px;">share</span> Share
+                    </button>
                 </div>
 
                 <div class="dashboard">
@@ -1009,25 +1019,35 @@
 
                 <div class="card mt-16">
                     <div class="card-title">
-                        <span class="material-icons">picture_as_pdf</span>
-                        Upload Nutrition PDF
+                        <span class="material-icons">psychology</span>
+                        AI Goal Generator
                     </div>
                     <p style="color: var(--md-sys-color-on-surface-variant); margin-bottom: 16px; font-size: 14px;">
-                        Upload a PDF from your nutritionist to automatically extract your daily goals using AI.
+                        Enter physical context or attach a nutritionist PDF to auto-calculate your perfect macros.
                     </p>
-                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('pdfInput').click()">
-                        <span class="material-icons" style="font-size: 48px; color: var(--md-sys-color-primary); margin-bottom: 8px;">cloud_upload</span>
-                        <div style="font-weight: 500; color: var(--md-sys-color-on-surface); margin-bottom: 4px;">
-                            Click to upload PDF
-                        </div>
-                        <div style="font-size: 12px; color: var(--md-sys-color-on-surface-variant);">
-                            Or drag and drop here
-                        </div>
+
+                    <div id="contextFieldsList"></div>
+                    
+                    <button class="btn btn-outlined btn-full" onclick="app.addContextField()" style="margin-bottom: 16px; border-style: dashed;">
+                        <span class="material-icons">add</span>
+                        Add Data Field (e.g. Weight, Goal)
+                    </button>
+
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('pdfInput').click()" style="padding: 20px;">
+                        <span class="material-icons" style="font-size: 32px; color: var(--md-sys-color-primary); margin-bottom: 8px;">picture_as_pdf</span>
+                        <div style="font-weight: 500; font-size: 14px;">Optional: Click to attach PDF</div>
+                        <div id="pdfFilename" style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px;"></div>
                     </div>
                     <input type="file" id="pdfInput" accept=".pdf" style="display: none;" onchange="app.handlePdfUpload(event)">
+                    
+                    <button class="btn btn-filled btn-full" onclick="app.generateFromContextAndPdf()" style="margin-top: 16px;">
+                        <span class="material-icons">auto_awesome</span>
+                        Generate Goals
+                    </button>
+
                     <div id="pdfProcessing" class="hidden" style="margin-top: 16px; text-align: center;">
                         <div class="spinner"></div>
-                        <p style="margin-top: 16px; color: var(--md-sys-color-on-surface-variant);">Analyzing PDF with AI...</p>
+                        <p style="margin-top: 16px; color: var(--md-sys-color-on-surface-variant);">Analyzing logic via Cloudflare AI...</p>
                     </div>
                 </div>
             </div>
@@ -1139,6 +1159,7 @@
 
         const app = {
             workerUrl: null,
+            syncId: null,
             goals: {
                 daily_calories: 2000,
                 protein_g: 150,
@@ -1147,6 +1168,8 @@
                 ai_summary: null
             },
             foodLogs: [],
+            contextFields: [],
+            pendingPdfText: null,
             currentView: 'dashboard',
             scanner: null,
             selectedFood: null,
@@ -1156,8 +1179,10 @@
             init() {
                 // Load saved credentials
                 const savedWorkerUrl = localStorage.getItem('cf_worker_url');
+                const savedSyncId = localStorage.getItem('cf_sync_id');
                 
                 if (savedWorkerUrl) this.workerUrl = savedWorkerUrl;
+                if (savedSyncId) this.syncId = savedSyncId;
 
                 if (localStorage.getItem('onboarded')) {
                     this.showMainApp();
@@ -1194,6 +1219,13 @@
                 });
                 
                 this.updateDashboard();
+                this.renderContextFields();
+
+                // Setup cloud sync + notifications
+                if (this.workerUrl && this.syncId) {
+                    this.fetchFromCloud();
+                }
+                this.setupNotifications();
             },
 
             changeDate(offsetDays) {
@@ -1205,6 +1237,7 @@
 
             login() {
                 const workerUrl = document.getElementById('workerUrlInput').value.trim();
+                const syncId = document.getElementById('syncIdInput').value.trim();
 
                 if (!workerUrl || !workerUrl.startsWith('http')) {
                     this.showSnackbar('Please enter a valid Worker URL (e.g. https://snacktrack.workers.dev)');
@@ -1214,8 +1247,13 @@
                 this.workerUrl = workerUrl;
                 localStorage.setItem('cf_worker_url', workerUrl);
 
+                if (syncId) {
+                    this.syncId = syncId;
+                    localStorage.setItem('cf_sync_id', syncId);
+                }
+
                 this.skipLogin(); // Proceed
-                this.showSnackbar('Worker URL saved successfully!');
+                this.showSnackbar('Settings saved successfully!');
             },
 
             skipLogin() {
@@ -1237,6 +1275,125 @@
                 const hash = window.location.hash.replace('#', '') || 'dashboard';
                 this.navigate(hash, true);
                 this.updateDashboard();
+            },
+
+            shareRecap() {
+                if (!navigator.share) {
+                    this.showSnackbar('Sharing is not supported on this browser.');
+                    return;
+                }
+                const activeDate = this.currentDate;
+                const activeLogs = this.foodLogs.filter(log => log.date_string === activeDate);
+                const totals = activeLogs.reduce((acc, log) => ({
+                    calories: acc.calories + (log.calories || 0),
+                    protein: acc.protein + (log.protein_g || 0)
+                }), { calories: 0, protein: 0 });
+
+                navigator.share({
+                    title: 'My SnackTrack Recap',
+                    text: `💪 SnackTrack Recap for ${activeDate}:\n🎯 Goal: ${this.goals.daily_calories} kcal\n🍔 Consumed: ${Math.round(totals.calories)} kcal\n🥩 Protein: ${totals.protein.toFixed(1)}g\n\nTracked with SnackTrack M3!`,
+                }).catch(err => console.log('Error sharing', err));
+            },
+
+            setupNotifications() {
+                if ("Notification" in window) {
+                    if (Notification.permission === "default") {
+                        Notification.requestPermission();
+                    }
+                    setInterval(() => {
+                        const now = new Date();
+                        // Ping at 20:00 (8 PM)
+                        if (now.getHours() === 20 && now.getMinutes() === 0 && Notification.permission === "granted") {
+                            const today = new Date().toISOString().split('T')[0];
+                            const todayLogs = this.foodLogs.filter(log => log.date_string === today);
+                            if (todayLogs.length === 0) {
+                                new Notification("SnackTrack Reminder", { body: "You haven't logged any food today! Open SnackTrack to stay on target." });
+                            }
+                        }
+                    }, 60000); // Check every minute
+                }
+            },
+
+            addContextField() {
+                this.contextFields.push({ id: this.generateId(), key: '', value: '' });
+                this.renderContextFields();
+            },
+
+            removeContextField(id) {
+                this.contextFields = this.contextFields.filter(f => f.id !== id);
+                this.renderContextFields();
+            },
+
+            updateContextField(id, type, value) {
+                const field = this.contextFields.find(f => f.id === id);
+                if (field) field[type] = value;
+                this.syncToCloud();
+            },
+
+            renderContextFields() {
+                const container = document.getElementById('contextFieldsList');
+                container.innerHTML = this.contextFields.map(f => `
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+                        <input type="text" placeholder="Data (e.g. Weight)" value="${f.key}" onchange="app.updateContextField('${f.id}', 'key', this.value)" class="text-field" style="flex: 1; padding: 10px; border-radius: 4px; border: 1px solid var(--md-sys-color-outline);">
+                        <input type="text" placeholder="Value (e.g. 180lbs)" value="${f.value}" onchange="app.updateContextField('${f.id}', 'value', this.value)" class="text-field" style="flex: 1; padding: 10px; border-radius: 4px; border: 1px solid var(--md-sys-color-outline);">
+                        <button class="icon-btn" onclick="app.removeContextField('${f.id}')" style="color: var(--md-sys-color-error);"><span class="material-icons">remove_circle</span></button>
+                    </div>
+                `).join('');
+            },
+
+            async fetchFromCloud() {
+                if (!this.workerUrl || !this.syncId) return;
+                try {
+                    const url = new URL(this.workerUrl);
+                    url.pathname = '/sync';
+                    url.searchParams.set('profileId', this.syncId);
+
+                    const res = await fetch(url.toString());
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data) {
+                            if (data.goals) this.goals = data.goals;
+                            if (data.foodLogs) this.foodLogs = data.foodLogs;
+                            if (data.contextFields) this.contextFields = data.contextFields;
+                            
+                            localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
+                            localStorage.setItem('food_logs', JSON.stringify(this.foodLogs));
+                            
+                            this.updateDashboard();
+                            this.renderContextFields();
+                            
+                            document.getElementById('goalCalories').value = this.goals.daily_calories;
+                            document.getElementById('goalProtein').value = this.goals.protein_g;
+                            document.getElementById('goalCarbs').value = this.goals.carbs_g;
+                            document.getElementById('goalFat').value = this.goals.fat_g;
+                            
+                            if (this.goals.ai_summary) {
+                                document.getElementById('aiSummary').style.display = 'block';
+                                document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
+                            }
+                        }
+                    }
+                } catch(e) { console.error("Cloud fetch failed", e); }
+            },
+
+            async syncToCloud() {
+                if (!this.workerUrl || !this.syncId) return;
+                try {
+                    const payload = {
+                        goals: this.goals,
+                        foodLogs: this.foodLogs,
+                        contextFields: this.contextFields
+                    };
+                    const url = new URL(this.workerUrl);
+                    url.pathname = '/sync';
+                    url.searchParams.set('profileId', this.syncId);
+
+                    await fetch(url.toString(), {
+                        method: 'POST',
+                        body: JSON.stringify(payload),
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                } catch(e) { console.error("Cloud sync failed", e); }
             },
 
             closeOnboarding() {
@@ -1546,6 +1703,7 @@
                 }
 
                 this.saveFoodLogs();
+                this.syncToCloud();
                 this.updateDashboard();
                 this.closeFoodModal();
                 
@@ -1583,6 +1741,7 @@
             deleteLog(id) {
                 this.foodLogs = this.foodLogs.filter(log => log.id !== id);
                 this.saveFoodLogs();
+                this.syncToCloud();
                 this.updateDashboard();
                 this.showSnackbar('Food log deleted');
             },
@@ -1754,6 +1913,7 @@
                 this.goals.fat_g = parseInt(document.getElementById('goalFat').value) || 67;
 
                 localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
+                this.syncToCloud();
                 this.updateDashboard();
                 this.showSnackbar('Goals saved successfully!');
             },
@@ -1790,12 +1950,14 @@
             async handlePdfUpload(event) {
                 const file = event.target.files[0];
                 if (file && file.type === 'application/pdf') {
+                    document.getElementById('pdfFilename').textContent = file.name;
                     await this.processPdf(file);
                 }
             },
 
             async processPdf(file) {
                 document.getElementById('pdfProcessing').classList.remove('hidden');
+                document.getElementById('pdfProcessing').querySelector('p').textContent = "Extracting text locally...";
                 
                 try {
                     // Extract text from PDF
@@ -1810,8 +1972,8 @@
                         fullText += pageText + '\n';
                     }
 
-                    // Send to Cloudflare AI
-                    await this.analyzeWithAI(fullText);
+                    this.pendingPdfText = fullText;
+                    this.showSnackbar('PDF loaded! Press Generate Goals.');
 
                 } catch (error) {
                     this.showSnackbar('Failed to process PDF');
@@ -1821,6 +1983,19 @@
                 }
             },
 
+            async generateFromContextAndPdf() {
+                if (!this.workerUrl) {
+                    this.showSnackbar('Please configure your Cloudflare Worker URL first on the login screen.');
+                    return;
+                }
+                document.getElementById('pdfProcessing').classList.remove('hidden');
+                document.getElementById('pdfProcessing').querySelector('p').textContent = "Analyzing logic via Cloudflare AI...";
+                
+                await this.analyzeWithAI(this.pendingPdfText || "");
+                
+                document.getElementById('pdfProcessing').classList.add('hidden');
+            },
+
             async analyzeWithAI(text) {
                 if (!this.workerUrl) {
                     this.showSnackbar('Please configure your Cloudflare Worker URL first on the login screen.');
@@ -1828,15 +2003,19 @@
                 }
 
                 try {
+                    const url = new URL(this.workerUrl);
+                    url.pathname = '/ai';
+
                     const response = await fetch(
-                        this.workerUrl,
+                        url.toString(),
                         {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                text: text.substring(0, 4000)
+                                text: text.substring(0, 4000),
+                                context: this.contextFields.filter(f => f.key.trim() || f.value.trim()) // only non-empty fields
                             })
                         }
                     );
