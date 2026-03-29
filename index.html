@@ -1279,6 +1279,10 @@
                 
                 if (savedWorkerUrl) this.workerUrl = savedWorkerUrl;
                 if (savedSyncId) this.syncId = savedSyncId;
+                if (this.workerUrl && !this.syncId) {
+                    this.syncId = this.generateId();
+                    localStorage.setItem('cf_sync_id', this.syncId);
+                }
 
                 if (localStorage.getItem('onboarded')) {
                     this.showMainApp();
@@ -1339,7 +1343,7 @@
 
             login() {
                 const workerUrl = document.getElementById('workerUrlInput').value.trim();
-                const syncId = document.getElementById('syncIdInput').value.trim();
+                const syncId = document.getElementById('syncIdInput').value.trim() || this.generateId();
 
                 if (!workerUrl || !workerUrl.startsWith('http')) {
                     this.showSnackbar('Please enter a valid Worker URL (e.g. https://snacktrack.workers.dev)');
@@ -1349,13 +1353,12 @@
                 this.workerUrl = workerUrl;
                 localStorage.setItem('cf_worker_url', workerUrl);
 
-                if (syncId) {
-                    this.syncId = syncId;
-                    localStorage.setItem('cf_sync_id', syncId);
-                }
+                this.syncId = syncId;
+                localStorage.setItem('cf_sync_id', syncId);
+                document.getElementById('syncIdInput').value = syncId;
 
                 this.skipLogin(); // Proceed
-                this.showSnackbar('Settings saved successfully!');
+                this.showSnackbar('Settings saved successfully! Cloud sync profile is ready.');
             },
 
             skipLogin() {
