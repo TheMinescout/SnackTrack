@@ -789,14 +789,24 @@
     </style>
 </head>
 <body>
-    <!-- Login Screen -->
+    <!-- Welcome / Login Screen -->
     <div id="loginScreen" class="login-screen">
         <div class="login-card">
             <div style="text-align: center; margin-bottom: 24px;">
-                <span class="material-icons" style="font-size: 64px; color: var(--md-sys-color-primary);">restaurant_menu</span>
+                <span class="material-icons" style="font-size: 64px; color: var(--md-sys-color-primary);">rocket_launch</span>
             </div>
-            <h2>Welcome to SnackTrack M3</h2>
-            <p>Enter your Cloudflare API credentials to get started</p>
+            <h2>Welcome to SnackTrack</h2>
+            <p>Your free, private nutrition tracker. No account required to track foods!</p>
+            
+            <button class="btn btn-filled btn-full" onclick="app.skipLogin()" style="margin-bottom: 24px; font-size: 16px; padding: 12px;">
+                <span class="material-icons">restaurant</span>
+                Start Tracking Now
+            </button>
+            
+            <hr style="border: 0; border-top: 1px solid var(--md-sys-color-outline-variant); margin-bottom: 24px;">
+            
+            <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 8px;">Enable AI Features (Optional)</h3>
+            <p style="font-size: 12px; margin-bottom: 16px;">Want to auto-extract goals from nutritionist PDFs? Enter your free Cloudflare Workers AI credentials.</p>
             
             <div class="text-field">
                 <input type="text" id="accountIdInput" placeholder=" " autocomplete="off">
@@ -808,13 +818,13 @@
                 <label>Cloudflare API Token</label>
             </div>
             
-            <button class="btn btn-filled btn-full" onclick="app.login()">
-                <span class="material-icons">login</span>
-                Start Tracking
+            <button class="btn btn-outlined btn-full" onclick="app.login()">
+                <span class="material-icons">vpn_key</span>
+                Save API Keys & Enter
             </button>
             
-            <div style="margin-top: 24px; padding: 12px; background: var(--md-sys-color-secondary-container); border-radius: 8px; font-size: 12px; color: var(--md-sys-color-on-secondary-container);">
-                <strong>Need credentials?</strong> Get a free Cloudflare account at cloudflare.com. You'll need your Account ID and an API Token with Workers AI permissions.
+            <div style="margin-top: 16px; font-size: 11px; color: var(--md-sys-color-on-surface-variant); text-align: center;">
+                Find these in your <a href="https://dash.cloudflare.com" target="_blank" style="color: var(--md-sys-color-primary);">Cloudflare Dashboard</a> under <strong>My Profile > API Tokens</strong>. Remember to grant Workers AI permissions!
             </div>
         </div>
     </div>
@@ -1154,9 +1164,10 @@
                 const savedAccountId = localStorage.getItem('cf_account_id');
                 const savedApiToken = localStorage.getItem('cf_api_token');
                 
-                if (savedAccountId && savedApiToken) {
-                    this.accountId = savedAccountId;
-                    this.apiToken = savedApiToken;
+                if (savedAccountId) this.accountId = savedAccountId;
+                if (savedApiToken) this.apiToken = savedApiToken;
+
+                if (localStorage.getItem('onboarded')) {
                     this.showMainApp();
                 }
 
@@ -1211,20 +1222,27 @@
 
                 this.accountId = accountId;
                 this.apiToken = apiToken;
-
                 localStorage.setItem('cf_account_id', accountId);
                 localStorage.setItem('cf_api_token', apiToken);
 
+                this.skipLogin(); // Proceed
+                this.showSnackbar('API Keys saved successfully!');
+            },
+
+            skipLogin() {
+                localStorage.setItem('onboarded', 'true'); // They saw the welcome screen
                 this.showMainApp();
-                this.showSnackbar('Logged in successfully!');
+                this.showSnackbar('Welcome to SnackTrack!');
             },
 
             showMainApp() {
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
-                
-                if (!localStorage.getItem('onboarded')) {
+
+                // We don't need the boarding modal anymore if the welcome screen handles it, but keep it just in case
+                if (!localStorage.getItem('onboarded_modal')) {
                     document.getElementById('onboardingModal').classList.add('active');
+                    localStorage.setItem('onboarded_modal', 'true');
                 }
 
                 const hash = window.location.hash.replace('#', '') || 'dashboard';
@@ -1239,8 +1257,9 @@
 
             navigate(view, fromHashChange = false) {
                 if (!fromHashChange) {
-                    window.location.hash = view;
-                    return;
+                    // Update URL hash without causing a page jump
+                    history.replaceState(null, null, '#' + view);
+                    // Do NOT return; continue executing the navigation logic
                 }
 
                 // Hide all views
@@ -1292,9 +1311,15 @@
                 this.showSnackbar('Searching...');
                 
                 try {
+                    // Use the v2 API payload, and us.openfoodfacts.org for better availability
                     const response = await fetch(
-                        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=code,product_name,nutriments,image_front_thumb_url`
+                        `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=code,product_name,nutriments,image_front_thumb_url`
                     );
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
                     const data = await response.json();
 
                     const resultsDiv = document.getElementById('searchResults');
@@ -1830,7 +1855,7 @@ If a specific macro is not mentioned, provide a standard estimated default based
 
                 try {
                     const response = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+                        `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/@cf/meta/llama-3-8b-instruct`,
                         {
                             method: 'POST',
                             headers: {
@@ -1847,7 +1872,9 @@ If a specific macro is not mentioned, provide a standard estimated default based
                     );
 
                     if (!response.ok) {
-                        throw new Error('API request failed');
+                        const errBody = await response.text();
+                        console.error("Cloudflare Error:", errBody);
+                        throw new Error(`API request failed: ${response.status} - Please check your Account ID and Token.`);
                     }
 
                     const data = await response.json();

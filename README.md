@@ -17,7 +17,7 @@ SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application 
 
 ### 🤖 AI-Powered Goal Setting
 * **PDF Upload:** Upload a meal plan or PDF from your nutritionist.
-* **Cloudflare Workers AI:** Uses `llama-3.1-8b-instruct` to automatically extract your daily calorie and macro targets from the document.
+* **Cloudflare Workers AI:** Uses `@cf/meta/llama-3-8b-instruct` to automatically extract your daily calorie and macro targets from the document.
 * **Encouraging Summaries:** Generates a brief, AI-driven summary of your nutritional guidelines.
 * **Manual Override:** Easily edit your goals manually if you prefer.
 
@@ -35,7 +35,7 @@ SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application 
 * **Storage:** `localStorage`. Your data never leaves your device unless you clear your browser data.
 * **Styling:** Vanilla CSS with M3 variables.
 * **External APIs & Libraries:**
-  * [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) (Llama 3.1)
+  * [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) (@cf/meta/llama-3-8b-instruct)
   * [OpenFoodFacts API](https://world.openfoodfacts.org/data) (Product search & barcodes)
   * [PDF.js](https://mozilla.github.io/pdf.js/) (Local PDF parsing)
   * [HTML5-QRCode](https://github.com/mebjas/html5-qrcode) (Camera scanner)
