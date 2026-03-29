@@ -50,13 +50,16 @@ Because SnackTrack M3 is a single file, there is no build step or server setup r
 ### 1. Get the App
 Simply download the `snacktrack-m3.html` file and open it in any modern web browser.
 
-### 2. Configure Cloudflare API (Optional, for AI PDF parsing)
-To use the AI goal-extraction features, you need a free Cloudflare account:
+### 2. Configure Cloudflare AI Worker (Optional, for PDF parsing)
+To use the AI goal-extraction features safely without exposing your API keys in the browser:
 1. Sign up or log in at [Cloudflare](https://dash.cloudflare.com/).
-2. Locate your **Account ID** in your dashboard URL or side panel.
-3. Go to **My Profile > API Tokens**.
-4. Create a new token with **Workers AI** read/write permissions.
-5. Open SnackTrack M3 and enter your Account ID and API Token on the welcome screen.
+2. Go to **Workers & Pages > Overview** and create a new Worker.
+3. Replace the default worker code with the contents of `worker.js` (included in this repository).
+4. Go to the worker's **Settings > Variables & Secrets** (or use `wrangler.toml`) and bind the AI service:
+   - Variable name: `AI`
+   - Service: `Workers AI` 
+5. Deploy the worker and copy its URL (e.g., `https://snacktrack-ai.your-username.workers.dev`).
+6. Open SnackTrack M3 and paste this URL on the welcome screen.
 
 ### 3. Install as a PWA (Mobile)
 For the best experience, install it as an app on your phone:
@@ -69,8 +72,8 @@ The app will now launch in full-screen mode like a native application!
 ## 🔒 Privacy & Data
 
 SnackTrack M3 is inherently privacy-preserving. 
-* **No Database:** There is no central database. All food logs, custom goals, and API keys are stored locally in your browser's `localStorage`.
-* **API Calls:** The only data that leaves your device are search queries to OpenFoodFacts and the parsed text of your uploaded PDFs sent directly to your own Cloudflare AI endpoint.
+* **No Database:** There is no central database. All food logs, custom goals, and the worker URL are stored locally in your browser's `localStorage`.
+* **API Calls:** The only data that leaves your device are search queries to OpenFoodFacts and the parsed text of your uploaded PDFs sent securely to your own personal Cloudflare Worker.
 
 ---
 

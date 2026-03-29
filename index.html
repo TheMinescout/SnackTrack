@@ -806,25 +806,20 @@
             <hr style="border: 0; border-top: 1px solid var(--md-sys-color-outline-variant); margin-bottom: 24px;">
             
             <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 8px;">Enable AI Features (Optional)</h3>
-            <p style="font-size: 12px; margin-bottom: 16px;">Want to auto-extract goals from nutritionist PDFs? Enter your free Cloudflare Workers AI credentials.</p>
+            <p style="font-size: 12px; margin-bottom: 16px;">Want to auto-extract goals from nutritionist PDFs? Connect your Cloudflare AI Worker.</p>
             
             <div class="text-field">
-                <input type="text" id="accountIdInput" placeholder=" " autocomplete="off">
-                <label>Cloudflare Account ID</label>
-            </div>
-            
-            <div class="text-field">
-                <input type="password" id="apiTokenInput" placeholder=" " autocomplete="off">
-                <label>Cloudflare API Token</label>
+                <input type="url" id="workerUrlInput" placeholder=" " autocomplete="off">
+                <label>Cloudflare Worker URL</label>
             </div>
             
             <button class="btn btn-outlined btn-full" onclick="app.login()">
-                <span class="material-icons">vpn_key</span>
-                Save API Keys & Enter
+                <span class="material-icons">link</span>
+                Save Worker URL & Enter
             </button>
             
             <div style="margin-top: 16px; font-size: 11px; color: var(--md-sys-color-on-surface-variant); text-align: center;">
-                Find these in your <a href="https://dash.cloudflare.com" target="_blank" style="color: var(--md-sys-color-primary);">Cloudflare Dashboard</a> under <strong>My Profile > API Tokens</strong>. Remember to grant Workers AI permissions!
+                Deploy the powerful AI logic directly to your own account!<br>Check the <strong>worker.js</strong> file for deployment instructions.
             </div>
         </div>
     </div>
@@ -1143,8 +1138,7 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         const app = {
-            accountId: null,
-            apiToken: null,
+            workerUrl: null,
             goals: {
                 daily_calories: 2000,
                 protein_g: 150,
@@ -1161,11 +1155,9 @@
 
             init() {
                 // Load saved credentials
-                const savedAccountId = localStorage.getItem('cf_account_id');
-                const savedApiToken = localStorage.getItem('cf_api_token');
+                const savedWorkerUrl = localStorage.getItem('cf_worker_url');
                 
-                if (savedAccountId) this.accountId = savedAccountId;
-                if (savedApiToken) this.apiToken = savedApiToken;
+                if (savedWorkerUrl) this.workerUrl = savedWorkerUrl;
 
                 if (localStorage.getItem('onboarded')) {
                     this.showMainApp();
@@ -1212,21 +1204,18 @@
             },
 
             login() {
-                const accountId = document.getElementById('accountIdInput').value.trim();
-                const apiToken = document.getElementById('apiTokenInput').value.trim();
+                const workerUrl = document.getElementById('workerUrlInput').value.trim();
 
-                if (!accountId || !apiToken) {
-                    this.showSnackbar('Please enter both Account ID and API Token');
+                if (!workerUrl || !workerUrl.startsWith('http')) {
+                    this.showSnackbar('Please enter a valid Worker URL (e.g. https://snacktrack.workers.dev)');
                     return;
                 }
 
-                this.accountId = accountId;
-                this.apiToken = apiToken;
-                localStorage.setItem('cf_account_id', accountId);
-                localStorage.setItem('cf_api_token', apiToken);
+                this.workerUrl = workerUrl;
+                localStorage.setItem('cf_worker_url', workerUrl);
 
                 this.skipLogin(); // Proceed
-                this.showSnackbar('API Keys saved successfully!');
+                this.showSnackbar('Worker URL saved successfully!');
             },
 
             skipLogin() {
@@ -1833,52 +1822,35 @@
             },
 
             async analyzeWithAI(text) {
-                if (!this.accountId || !this.apiToken) {
-                    this.showSnackbar('Please configure Cloudflare credentials');
+                if (!this.workerUrl) {
+                    this.showSnackbar('Please configure your Cloudflare Worker URL first on the login screen.');
                     return;
                 }
 
-                const systemPrompt = `You are an expert nutritionist AI. Read the provided text extracted from a diet or nutrition PDF.
-Extract the daily nutritional targets and create a brief, encouraging summary.
-You MUST output ONLY valid JSON in the exact format:
-{
-  "daily_calories": number,
-  "protein_g": number,
-  "carbs_g": number,
-  "fat_g": number,
-  "ai_summary": "A 2-3 sentence summary of the nutritional guidance."
-}
-If a specific macro is not mentioned, provide a standard estimated default based on the calories using these ratios:
-- Protein: 30% of calories (1g protein = 4 kcal)
-- Carbs: 40% of calories (1g carbs = 4 kcal)
-- Fat: 30% of calories (1g fat = 9 kcal)`;
-
                 try {
                     const response = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/@cf/meta/llama-3-8b-instruct`,
+                        this.workerUrl,
                         {
                             method: 'POST',
                             headers: {
-                                'Authorization': `Bearer ${this.apiToken}`,
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                messages: [
-                                    { role: 'system', content: systemPrompt },
-                                    { role: 'user', content: text.substring(0, 4000) } // Limit text length
-                                ]
+                                text: text.substring(0, 4000)
                             })
                         }
                     );
 
                     if (!response.ok) {
                         const errBody = await response.text();
-                        console.error("Cloudflare Error:", errBody);
-                        throw new Error(`API request failed: ${response.status} - Please check your Account ID and Token.`);
+                        console.error("Worker Error:", errBody);
+                        throw new Error(`Worker returned ${response.status}: Please check your worker logs.`);
                     }
 
                     const data = await response.json();
-                    const aiResponse = data.result.response;
+                    
+                    // The worker returns the exact response from Cloudflare AI
+                    const aiResponse = data.response; 
 
                     // Parse JSON response
                     let parsedGoals;
@@ -1890,7 +1862,7 @@ If a specific macro is not mentioned, provide a standard estimated default based
                         if (jsonMatch) {
                             parsedGoals = JSON.parse(jsonMatch[0]);
                         } else {
-                            throw new Error('Could not parse AI response');
+                            throw new Error('Could not parse AI response output');
                         }
                     }
 
