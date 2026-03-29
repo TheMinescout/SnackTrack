@@ -8,15 +8,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>SnackTrack M3 - Nutrition Tracker</title>
     
-    <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     
-    <!-- PDF.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
-    <!-- HTML5 QR Code Scanner -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <style>
@@ -840,7 +837,6 @@
     </style>
 </head>
 <body>
-    <!-- Welcome / Login Screen -->
     <div id="loginScreen" class="login-screen">
         <div class="login-card">
             <div style="text-align: center; margin-bottom: 24px;">
@@ -880,13 +876,11 @@
         </div>
     </div>
 
-    <!-- Main App -->
     <div id="mainApp" class="app-shell hidden">
         <div id="cloudSyncIndicator" class="sync-indicator offline" title="Cloud sync is idle">
             <span class="material-icons" style="font-size: 20px;">cloud_done</span>
         </div>
         <div class="main-container">
-        <!-- Top App Bar -->
         <div class="top-app-bar">
             <h1>
                 <span class="material-icons">restaurant_menu</span>
@@ -897,11 +891,8 @@
             </button>
         </div>
 
-        <!-- Main Content -->
         <div class="main-content" id="mainContent">
-            <!-- Dashboard View -->
             <div id="dashboardView">
-                <!-- Date Navigator (History) & Share -->
                 <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; margin-bottom: 16px;">
                     <div style="display: flex; align-items: center;">
                         <button class="icon-btn" onclick="app.changeDate(-1)"><span class="material-icons">chevron_left</span></button>
@@ -914,7 +905,6 @@
                 </div>
 
                 <div class="dashboard">
-                    <!-- Primary Gauge: Calories -->
                     <div class="card gauge-primary">
                         <div class="card-title">
                             <span class="material-icons">local_fire_department</span>
@@ -932,7 +922,6 @@
                         </div>
                     </div>
 
-                    <!-- Protein Progress -->
                     <div class="card">
                         <div class="card-title">
                             <span class="material-icons">fitness_center</span>
@@ -949,7 +938,6 @@
                         </div>
                     </div>
 
-                    <!-- Carbs Progress -->
                     <div class="card">
                         <div class="card-title">
                             <span class="material-icons">grain</span>
@@ -966,7 +954,6 @@
                         </div>
                     </div>
 
-                    <!-- Fat Progress -->
                     <div class="card">
                         <div class="card-title">
                             <span class="material-icons">water_drop</span>
@@ -983,7 +970,6 @@
                         </div>
                     </div>
 
-                    <!-- Today's Log -->
                     <div class="card" style="grid-column: 1 / -1;">
                         <div class="card-title">
                             <span class="material-icons">schedule</span>
@@ -994,7 +980,6 @@
                 </div>
             </div>
 
-            <!-- Log View -->
             <div id="logView" class="hidden">
                 <div class="tabs">
                     <div class="tab active" onclick="app.switchLogTab('search')">
@@ -1005,7 +990,6 @@
                     </div>
                 </div>
 
-                <!-- Search Tab -->
                 <div id="searchTab">
                     <div class="text-field">
                         <input type="text" id="searchInput" placeholder=" " autocomplete="off">
@@ -1018,7 +1002,6 @@
                     <div id="searchResults" class="search-results"></div>
                 </div>
 
-                <!-- Scan Tab -->
                 <div id="scanTab" class="hidden">
                     <div class="scanner-container">
                         <div id="scanner"></div>
@@ -1033,7 +1016,6 @@
                 </div>
             </div>
 
-            <!-- Goals View -->
             <div id="goalsView" class="hidden">
                 <div class="card">
                     <div class="card-title">
@@ -1108,7 +1090,6 @@
                 </div>
             </div>
 
-            <!-- Ask AI View -->
             <div id="askView" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
                 <div class="card" style="flex: 1; display: flex; flex-direction: column; margin-bottom: 16px; padding: 0; overflow: hidden; height: calc(100vh - 160px);">
                     <div style="padding: 16px; border-bottom: 1px solid var(--md-sys-color-surface-variant); display: flex; align-items: center; gap: 8px;">
@@ -1125,7 +1106,6 @@
         </div>
         </div>
 
-        <!-- Bottom Navigation -->
         <div class="bottom-nav">
             <div class="nav-item active" onclick="app.navigate('dashboard')">
                 <span class="material-icons">dashboard</span>
@@ -1146,7 +1126,6 @@
         </div>
     </div>
 
-    <!-- Onboarding Modal -->
     <div id="onboardingModal" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
@@ -1174,7 +1153,6 @@
         </div>
     </div>
 
-    <!-- Food Detail Modal -->
     <div id="foodModal" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
@@ -1225,10 +1203,8 @@
         </div>
     </div>
 
-    <!-- Snackbar -->
     <div id="snackbar" class="snackbar"></div>
 
-    <!-- Hidden PDF Template -->
     <div id="pdfTemplate" style="display: none;">
         <div id="pdfContent" style="padding: 40px; font-family: 'Roboto', sans-serif; color: #333;">
             <div style="border-bottom: 2px solid #6750A4; padding-bottom: 16px; margin-bottom: 32px; display: flex; align-items: center; gap: 12px;">
@@ -1852,7 +1828,6 @@
                 if (!fromHashChange) {
                     // Update URL hash without causing a page jump
                     history.replaceState(null, null, '#' + view);
-                    // Do NOT return; continue executing the navigation logic
                 }
 
                 // Hide all views
@@ -1882,14 +1857,16 @@
             },
 
             switchLogTab(tab) {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                event.currentTarget.classList.add('active');
-
+                const tabs = document.querySelectorAll('.tab');
+                tabs.forEach(t => t.classList.remove('active'));
+                
                 if (tab === 'search') {
+                    tabs[0].classList.add('active');
                     document.getElementById('searchTab').classList.remove('hidden');
                     document.getElementById('scanTab').classList.add('hidden');
                     this.stopScanner();
                 } else {
+                    tabs[1].classList.add('active');
                     document.getElementById('searchTab').classList.add('hidden');
                     document.getElementById('scanTab').classList.remove('hidden');
                 }
@@ -2234,8 +2211,8 @@
                 // Update calorie gauge
                 this.drawGauge(totals.calories, this.goals.daily_calories);
 
-                // Update food log list
-                this.renderFoodLog(todayLogs);
+                // Update food log list - FIXED: was referencing todayLogs instead of activeLogs
+                this.renderFoodLog(activeLogs);
             },
 
             updateProgressBar(type, consumed, goal) {
