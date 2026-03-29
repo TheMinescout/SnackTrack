@@ -1415,27 +1415,36 @@
                     if (res.ok) {
                         const data = await res.json();
                         if (data) {
-                            if (data.goals) this.goals = data.goals;
-                            if (data.foodLogs) this.foodLogs = data.foodLogs;
-                            if (data.contextFields) this.contextFields = data.contextFields;
-                            if (data.documents) this.documents = data.documents;
-                            if (data.chatHistory) this.chatHistory = data.chatHistory;
+                            const localUpdated = parseInt(localStorage.getItem('last_updated')) || 0;
+                            const cloudUpdated = data.lastUpdated || 0;
                             
-                            this.saveAllLocal();
-                            
-                            this.updateDashboard();
-                            this.renderContextFields();
-                            this.renderDocuments();
-                            this.renderChatMessages();
-                            
-                            document.getElementById('goalCalories').value = this.goals.daily_calories;
-                            document.getElementById('goalProtein').value = this.goals.protein_g;
-                            document.getElementById('goalCarbs').value = this.goals.carbs_g;
-                            document.getElementById('goalFat').value = this.goals.fat_g;
-                            
-                            if (this.goals.ai_summary) {
-                                document.getElementById('aiSummary').style.display = 'block';
-                                document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
+                            // Only update from cloud if the cloud is NEWER or equal
+                            if (cloudUpdated >= localUpdated) {
+                                if (data.goals) this.goals = data.goals;
+                                if (data.foodLogs) this.foodLogs = data.foodLogs;
+                                if (data.contextFields) this.contextFields = data.contextFields;
+                                if (data.documents) this.documents = data.documents;
+                                if (data.chatHistory) this.chatHistory = data.chatHistory;
+                                
+                                this.saveAllLocal();
+                                
+                                this.updateDashboard();
+                                this.renderContextFields();
+                                this.renderDocuments();
+                                this.renderChatMessages();
+                                
+                                document.getElementById('goalCalories').value = this.goals.daily_calories;
+                                document.getElementById('goalProtein').value = this.goals.protein_g;
+                                document.getElementById('goalCarbs').value = this.goals.carbs_g;
+                                document.getElementById('goalFat').value = this.goals.fat_g;
+                                
+                                if (this.goals.ai_summary) {
+                                    document.getElementById('aiSummary').style.display = 'block';
+                                    document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
+                                }
+                            } else {
+                                // Local state is newer than the cloud (likely a fast offline edit or edge cache delay)
+                                setTimeout(() => this.syncToCloud(), 500);
                             }
                         }
                     }
@@ -1447,6 +1456,7 @@
                 if (!this.workerUrl || !this.syncId || !this.cloudLoaded) return;
                 try {
                     const payload = {
+                        lastUpdated: parseInt(localStorage.getItem('last_updated')) || Date.now(),
                         goals: this.goals,
                         foodLogs: this.foodLogs,
                         contextFields: this.contextFields,
@@ -1466,6 +1476,8 @@
             },
 
             saveAllLocal() {
+                const now = Date.now();
+                localStorage.setItem('last_updated', now.toString());
                 localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
                 localStorage.setItem('food_logs', JSON.stringify(this.foodLogs));
                 localStorage.setItem('context_fields', JSON.stringify(this.contextFields));
@@ -2201,7 +2213,7 @@
                 this.goals.carbs_g = parseInt(document.getElementById('goalCarbs').value) || 250;
                 this.goals.fat_g = parseInt(document.getElementById('goalFat').value) || 67;
 
-                localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
+                this.saveAllLocal();
                 this.syncToCloud();
                 this.updateDashboard();
                 this.showSnackbar('Goals saved successfully!');
@@ -2383,7 +2395,8 @@
                         document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
                     }
 
-                    localStorage.setItem('nutrition_goals', JSON.stringify(this.goals));
+                    this.saveAllLocal();
+                    this.syncToCloud();
                     this.updateDashboard();
 
                     this.showSnackbar('Goals extracted from PDF successfully!');
