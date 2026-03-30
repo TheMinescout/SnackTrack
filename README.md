@@ -1,6 +1,9 @@
-# 🥗 SnackTrack M3
+# 🥗 [SnackTrack M3](https://theminescout.github.io/SnackTrack/)
 
-SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application (SPA) designed to track daily nutritional intake. Built entirely in a single HTML file, it requires no backend database or subscriptions. It utilizes a "Bring Your Own Key" (BYOK) model for Cloudflare AI integration to parse nutritionist PDFs, chat with an AI dietitian, and log meals using the OpenFoodFacts API.
+SnackTrack M3 is a 100% free, hosted, mobile-first Single Page Application (SPA) designed to track daily nutritional intake. Built entirely in a single HTML file, it requires no backend database or subscriptions. It utilizes a "Bring Your Own Key" (BYOK) model for Cloudflare AI integration to parse nutritionist PDFs, chat with an AI dietitian, and log meals using the OpenFoodFacts API.
+
+> [!TIP]
+> **🚀 Use it now:** You can access the app immediately at **[https://theminescout.github.io/SnackTrack/](https://theminescout.github.io/SnackTrack/)**. It's free, hosted for you, and requires no downloads or installation!
 
 ## ✨ Features
 
@@ -48,7 +51,10 @@ SnackTrack M3 is a 100% free, self-hosted, mobile-first Single Page Application 
 Because SnackTrack M3 is a single file, there is no build step or server setup required.
 
 ### 1. Get the App
-Simply download the `index.html` file and open it in any modern web browser.
+The easiest way to use SnackTrack is to visit the hosted version:
+**[https://theminescout.github.io/SnackTrack/](https://theminescout.github.io/SnackTrack/)**
+
+Alternatively, you can download the `index.html` file from this repository and open it in any modern web browser.
 
 ### 2. Configure Cloudflare Worker (AI + KV Sync)
 To unlock cross-device syncing and smart AI goals:
