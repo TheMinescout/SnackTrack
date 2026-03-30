@@ -18,6 +18,9 @@
     
     <!-- HTML5 QR Code Scanner -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <!-- Markdown Parser for AI Tables -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     
     <style>
         * {
@@ -328,7 +331,7 @@
             box-shadow: var(--md-sys-elevation-2);
             color: var(--md-sys-color-outline);
             transition: all 0.2s ease;
-            cursor: pointer; /* Added so users know they can click it */
+            cursor: pointer;
         }
 
         .sync-indicator.synced {
@@ -830,6 +833,34 @@
             background: var(--md-sys-color-primary-container);
         }
 
+        /* Markdown Styles for AI Chat */
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+        .markdown-body th, .markdown-body td {
+            border: 1px solid var(--md-sys-color-outline-variant);
+            padding: 8px;
+            text-align: left;
+        }
+        .markdown-body th {
+            background: var(--md-sys-color-surface-variant);
+            font-weight: 500;
+        }
+        .markdown-body p {
+            margin-bottom: 8px;
+        }
+        .markdown-body ul, .markdown-body ol {
+            padding-left: 20px;
+            margin-bottom: 8px;
+        }
+        .markdown-body a {
+            color: var(--md-sys-color-primary);
+            text-decoration: underline;
+        }
+
         /* Utility Classes */
         .hidden {
             display: none !important;
@@ -883,8 +914,8 @@
 
     <!-- Main App -->
     <div id="mainApp" class="app-shell hidden">
-        <!-- ADDED ONCLICK HERE TO FORCE FETCH -->
-        <div id="cloudSyncIndicator" class="sync-indicator offline" title="Click to force fetch from cloud" onclick="app.fetchFromCloud()">
+        <!-- Force Fetch Sync Indicator -->
+        <div id="cloudSyncIndicator" class="sync-indicator offline" title="Click to force fetch from cloud" onclick="app.fetchFromCloud(true)">
             <span class="material-icons" style="font-size: 20px;">cloud_done</span>
         </div>
         <div class="main-container">
@@ -894,7 +925,7 @@
                 <span class="material-icons">restaurant_menu</span>
                 SnackTrack M3
             </h1>
-            <button class="icon-btn" onclick="app.showSettings()">
+            <button class="icon-btn" onclick="app.openSettingsModal()">
                 <span class="material-icons">settings</span>
             </button>
         </div>
@@ -1031,6 +1062,24 @@
                             Start Scanner
                         </button>
                     </div>
+                    
+                    <!-- NEW AI PHOTO UPLOAD SECTION -->
+                    <div style="margin-top: 32px; text-align: center;">
+                        <hr style="border: 0; border-top: 1px solid var(--md-sys-color-outline-variant); margin-bottom: 24px;">
+                        <p style="font-size: 14px; margin-bottom: 12px; color: var(--md-sys-color-on-surface-variant);">Or let AI guess your food from a photo!</p>
+                        
+                        <input type="file" id="foodPhotoInput" accept="image/*" capture="environment" style="display: none;" onchange="app.analyzeFoodImage(event)">
+                        <button class="btn btn-outlined btn-full" id="photoButton" onclick="document.getElementById('foodPhotoInput').click()">
+                            <span class="material-icons">photo_camera</span>
+                            Take a Photo
+                        </button>
+                        
+                        <div id="photoProcessing" class="hidden" style="margin-top: 16px; text-align: center;">
+                            <div class="spinner"></div>
+                            <p style="margin-top: 16px; color: var(--md-sys-color-on-surface-variant);">AI is analyzing your food...</p>
+                        </div>
+                    </div>
+
                     <div id="scanResult" class="search-results"></div>
                 </div>
             </div>
@@ -1227,6 +1276,52 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">App Settings</div>
+            </div>
+            <div class="modal-content">
+                <p style="font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 16px;">
+                    Configure your Cloudflare Worker URL and Profile ID to enable syncing across devices.
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label">Cloudflare Worker URL</label>
+                    <input type="url" id="settingsWorkerUrl" class="text-field" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; padding: 12px;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Sync Profile ID</label>
+                    <input type="text" id="settingsSyncId" class="text-field" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; padding: 12px;">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Time Zone</label>
+                    <input type="text" id="settingsTimeZone" class="text-field" placeholder="e.g. America/Los_Angeles" style="width: 100%; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; padding: 12px;">
+                    <div style="font-size: 11px; margin-top: 4px; color: var(--md-sys-color-on-surface-variant);">
+                        Leave blank to auto-detect your local timezone.
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--md-sys-color-outline-variant); margin: 24px 0;">
+
+                <button class="btn btn-outlined btn-full" onclick="app.logoutAndClear()" style="color: var(--md-sys-color-error); border-color: var(--md-sys-color-error);">
+                    <span class="material-icons">delete_forever</span>
+                    Log Out & Clear Local Data
+                </button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-text" onclick="document.getElementById('settingsModal').classList.remove('active')">Cancel</button>
+                <button class="btn btn-filled" onclick="app.saveSettings()">
+                    <span class="material-icons">save</span>
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Snackbar -->
     <div id="snackbar" class="snackbar"></div>
 
@@ -1240,7 +1335,7 @@
                     <p style="margin: 4px 0 0 0; color: #666; font-size: 14px;">Tailored by your AI Dietitian</p>
                 </div>
             </div>
-            <div id="pdfBody" style="line-height: 1.6; font-size: 14px; white-space: pre-wrap;"></div>
+            <div id="pdfBody" class="markdown-body" style="line-height: 1.6; font-size: 14px;"></div>
             <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; text-align: center; color: #888; font-size: 10px;">
                 Generated safely and privately by SnackTrack M3
             </div>
@@ -1251,9 +1346,28 @@
         // Initialize PDF.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+        // Helper to perform smart merge based on ID tombstones
+        function mergeWithTombstones(localArr, cloudArr, localDeleted, cloudDeleted) {
+            const allDeleted = new Set([...localDeleted, ...cloudDeleted]);
+            const map = new Map();
+            
+            // Add all local
+            localArr.forEach(item => {
+                if (!allDeleted.has(item.id)) map.set(item.id, item);
+            });
+            
+            // Add cloud (overwrites local if exists, keeps cloud if local doesn't have it)
+            cloudArr.forEach(item => {
+                if (!allDeleted.has(item.id)) map.set(item.id, item);
+            });
+            
+            return Array.from(map.values());
+        }
+
         const app = {
             workerUrl: null,
             syncId: null,
+            timezone: null,
             goals: {
                 daily_calories: 2000,
                 protein_g: 150,
@@ -1265,6 +1379,7 @@
             contextFields: [],
             documents: [],
             chatHistory: [],
+            deletedIds: [], // Tombstones for sync
             pendingPdfText: null,
             currentView: 'dashboard',
             scanner: null,
@@ -1278,9 +1393,13 @@
                 // Load saved credentials
                 const savedWorkerUrl = localStorage.getItem('cf_worker_url');
                 const savedSyncId = localStorage.getItem('cf_sync_id');
+                const savedTimezone = localStorage.getItem('user_timezone');
                 
                 if (savedWorkerUrl) this.workerUrl = savedWorkerUrl;
                 if (savedSyncId) this.syncId = savedSyncId;
+                if (savedTimezone) this.timezone = savedTimezone;
+                else this.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
                 if (this.workerUrl && !this.syncId) {
                     this.syncId = this.generateId();
                     localStorage.setItem('cf_sync_id', this.syncId);
@@ -1361,6 +1480,7 @@
 
                 this.skipLogin(); // Proceed
                 this.showSnackbar('Settings saved successfully! Cloud sync profile is ready.');
+                this.fetchFromCloud(); // Fetch immediately on login
             },
 
             skipLogin() {
@@ -1407,6 +1527,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 date: activeDate,
+                                timeZone: this.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
                                 goals: this.goals,
                                 logs: activeLogs
                             })
@@ -1450,7 +1571,10 @@
 
             removeContextField(id) {
                 this.contextFields = this.contextFields.filter(f => f.id !== id);
+                this.deletedIds.push(id);
                 this.renderContextFields();
+                this.saveAllLocal();
+                this.syncToCloud();
             },
 
             updateContextField(id, type, value) {
@@ -1514,9 +1638,12 @@
                     : `<span class="material-icons">${iconName}</span>${defaultLabel}`;
             },
 
-            async fetchFromCloud() {
+            async fetchFromCloud(force = false) {
                 if (!this.workerUrl || !this.syncId) return;
                 try {
+                    if (force) this.showSnackbar('Fetching latest data from cloud...');
+                    this.setSyncState('syncing');
+
                     const url = new URL(this.workerUrl);
                     url.pathname = '/sync';
                     url.searchParams.set('profileId', this.syncId);
@@ -1525,43 +1652,52 @@
                     if (res.ok) {
                         const data = await res.json();
                         if (this.hasCloudContent(data)) {
-                            const localUpdated = parseInt(localStorage.getItem('last_updated')) || 0;
-                            const cloudUpdated = data.lastUpdated || 0;
                             
-                            // Only update from cloud if the cloud is NEWER or equal
-                            if (cloudUpdated >= localUpdated) {
-                                if (data.goals) this.goals = data.goals;
-                                if (data.foodLogs) this.foodLogs = data.foodLogs;
-                                if (data.contextFields) this.contextFields = data.contextFields;
-                                if (data.documents) this.documents = data.documents;
-                                if (data.chatHistory) this.chatHistory = data.chatHistory;
-                                
-                                this.saveAllLocal();
-                                
-                                this.updateDashboard();
-                                this.renderContextFields();
-                                this.renderDocuments();
-                                this.renderChatMessages();
-                                
-                                document.getElementById('goalCalories').value = this.goals.daily_calories;
-                                document.getElementById('goalProtein').value = this.goals.protein_g;
-                                document.getElementById('goalCarbs').value = this.goals.carbs_g;
-                                document.getElementById('goalFat').value = this.goals.fat_g;
-                                
-                                if (this.goals.ai_summary) {
-                                    document.getElementById('aiSummary').style.display = 'block';
-                                    document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
-                                }
-                            } else {
-                                // Local state is newer than the cloud (likely a fast offline edit or edge cache delay)
-                                setTimeout(() => this.syncToCloud(), 500);
+                            // SMART MERGE - Instead of completely wiping local data, we merge using IDs and Tombstones.
+                            const cloudDeleted = Array.isArray(data.deletedIds) ? data.deletedIds : [];
+                            
+                            if (data.goals && Object.keys(data.goals).length > 0) this.goals = data.goals;
+                            
+                            if (data.foodLogs) this.foodLogs = mergeWithTombstones(this.foodLogs, data.foodLogs, this.deletedIds, cloudDeleted);
+                            if (data.contextFields) this.contextFields = mergeWithTombstones(this.contextFields, data.contextFields, this.deletedIds, cloudDeleted);
+                            if (data.documents) this.documents = mergeWithTombstones(this.documents, data.documents, this.deletedIds, cloudDeleted);
+                            
+                            // Chat is harder to tombstone perfectly, but we can uniquely map by ID if available
+                            if (data.chatHistory) {
+                                const map = new Map(this.chatHistory.map((item, idx) => [item.id || `temp_${idx}`, item]));
+                                data.chatHistory.forEach((item, idx) => map.set(item.id || `temp_${idx}`, item));
+                                this.chatHistory = Array.from(map.values());
                             }
-                        } else {
-                            // Cloud is empty/corrupted; local is source of truth and will repopulate cloud.
+
+                            // Keep track of all combined deleted IDs
+                            this.deletedIds = Array.from(new Set([...this.deletedIds, ...cloudDeleted]));
+                            
+                            this.saveAllLocal();
+                            
+                            this.updateDashboard();
+                            this.renderContextFields();
+                            this.renderDocuments();
+                            this.renderChatMessages();
+                            
+                            document.getElementById('goalCalories').value = this.goals.daily_calories;
+                            document.getElementById('goalProtein').value = this.goals.protein_g;
+                            document.getElementById('goalCarbs').value = this.goals.carbs_g;
+                            document.getElementById('goalFat').value = this.goals.fat_g;
+                            
+                            if (this.goals.ai_summary) {
+                                document.getElementById('aiSummary').style.display = 'block';
+                                document.getElementById('aiSummaryText').textContent = this.goals.ai_summary;
+                            }
+
+                            // If we merged local data that the cloud didn't have, push it back up to solidify the merge
+                            setTimeout(() => this.syncToCloud({ awaitAck: false }), 500);
+
+                        } else if (this.foodLogs.length > 0) {
+                            // Cloud is completely empty, but we have local data. Push our local data to the cloud so we don't lose it.
                             setTimeout(() => this.syncToCloud({ awaitAck: false }), 200);
                         }
                         this.setSyncState('synced');
-                        this.showSnackbar('Fetched latest data from cloud!');
+                        if (force) this.showSnackbar('Sync complete!');
                     } else {
                         this.setSyncState('error');
                     }
@@ -1582,7 +1718,8 @@
                         foodLogs: this.foodLogs,
                         contextFields: this.contextFields,
                         documents: this.documents,
-                        chatHistory: this.chatHistory
+                        chatHistory: this.chatHistory,
+                        deletedIds: this.deletedIds
                     };
                     const url = new URL(this.workerUrl);
                     url.pathname = '/sync';
@@ -1633,6 +1770,7 @@
                 localStorage.setItem('context_fields', JSON.stringify(this.contextFields));
                 localStorage.setItem('documents', JSON.stringify(this.documents));
                 localStorage.setItem('chat_history', JSON.stringify(this.chatHistory));
+                localStorage.setItem('deleted_ids', JSON.stringify(this.deletedIds));
             },
 
             loadAllLocal() {
@@ -1641,12 +1779,14 @@
                 const savedContext = localStorage.getItem('context_fields');
                 const savedDocs = localStorage.getItem('documents');
                 const savedChat = localStorage.getItem('chat_history');
+                const savedDeleted = localStorage.getItem('deleted_ids');
 
                 if (savedGoals) this.goals = JSON.parse(savedGoals);
                 if (savedLogs) this.foodLogs = JSON.parse(savedLogs);
                 if (savedContext) this.contextFields = JSON.parse(savedContext);
                 if (savedDocs) this.documents = JSON.parse(savedDocs);
                 if (savedChat) this.chatHistory = JSON.parse(savedChat);
+                if (savedDeleted) this.deletedIds = JSON.parse(savedDeleted);
 
                 // Update UI forms
                 document.getElementById('goalCalories').value = this.goals.daily_calories;
@@ -1678,6 +1818,7 @@
 
             deleteDocument(id) {
                 this.documents = this.documents.filter(d => d.id !== id);
+                this.deletedIds.push(id);
                 this.renderDocuments();
                 this.saveAllLocal();
                 this.syncToCloud();
@@ -1728,9 +1869,12 @@
                             }
                         }
 
+                        // Parse markdown for tables and rich text!
+                        const parsedMarkdown = marked.parse(displayContent);
+
                         html += `
                         <div style="background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); padding: 12px 16px; border-radius: 16px 16px 16px 4px; max-width: 85%; align-self: flex-start; font-size: 14px; display: flex; flex-direction: column;">
-                            <div style="white-space: pre-wrap;">${displayContent}</div>
+                            <div class="markdown-body">${parsedMarkdown}</div>
                             ${smartButtonsHtml}
                             <button class="btn btn-text" onclick="app.downloadMessageAsPdf(${idx})" style="align-self: flex-start; padding: 4px; margin-top: 8px; font-size: 11px; color: var(--md-sys-color-primary);">
                                 <span class="material-icons" style="font-size: 14px; margin-right: 4px;">picture_as_pdf</span>
@@ -1751,8 +1895,8 @@
                 // Clean out ALL log action tags globally so they don't show up in the PDF
                 let cleanContent = msg.content.replace(/<log_action>([\s\S]*?)<\/log_action>/g, '').trim();
 
-                // Inject content
-                document.getElementById('pdfBody').textContent = cleanContent;
+                // Inject markdown content
+                document.getElementById('pdfBody').innerHTML = marked.parse(cleanContent);
                 
                 // Show temporarily for rendering, but with absolute positioning so it doesn't break layout
                 const pdfTemplate = document.getElementById('pdfTemplate');
@@ -1799,6 +1943,67 @@
                 }
             },
 
+            async analyzeFoodImage(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                if (!this.workerUrl) {
+                    this.showSnackbar('Please configure your Cloudflare Worker URL first.');
+                    return;
+                }
+
+                document.getElementById('photoProcessing').classList.remove('hidden');
+                this.setButtonLoading('photoButton', true, 'Uploading & Analyzing...', 'Take a Photo', 'photo_camera');
+
+                try {
+                    // Convert to base64
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = async () => {
+                        const base64String = reader.result.split(',')[1];
+
+                        const url = new URL(this.workerUrl);
+                        url.pathname = '/analyze-image';
+
+                        const res = await fetch(url.toString(), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image: base64String })
+                        });
+
+                        if (!res.ok) throw new Error('Analysis failed');
+                        const data = await res.json();
+
+                        // Send the AI's response straight to the Chat tab
+                        this.chatHistory.push({ 
+                            role: 'user', 
+                            content: '📸 Uploaded a photo of my food for analysis.', 
+                            id: this.generateId() 
+                        });
+                        this.chatHistory.push({ 
+                            role: 'assistant', 
+                            content: data.response, 
+                            id: this.generateId() 
+                        });
+                        
+                        this.saveAllLocal();
+                        this.syncToCloud();
+                        this.renderChatMessages();
+                        
+                        // Switch to chat tab to see results
+                        this.navigate('ask');
+                        this.showSnackbar('Image analyzed successfully!');
+                    };
+                } catch (error) {
+                    console.error(error);
+                    this.showSnackbar('Failed to analyze image. Please try again.');
+                } finally {
+                    document.getElementById('photoProcessing').classList.add('hidden');
+                    this.setButtonLoading('photoButton', false, 'Uploading & Analyzing...', 'Take a Photo', 'photo_camera');
+                    event.target.value = ''; // reset input
+                }
+            },
+
             async sendMessage() {
                 const input = document.getElementById('chatInput');
                 const message = input.value.trim();
@@ -1810,7 +2015,10 @@
                 }
 
                 input.value = '';
-                this.chatHistory.push({ role: 'user', content: message });
+                
+                // Construct the user message
+                const msgObj = { role: 'user', content: message, id: this.generateId() };
+                this.chatHistory.push(msgObj);
                 this.renderChatMessages();
 
                 const loadingId = this.generateId();
@@ -1827,6 +2035,10 @@
 
                     const url = new URL(this.workerUrl);
                     url.pathname = '/ask';
+                    
+                    // Capture current time specific to the user's timezone
+                    const timeZoneToUse = this.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const clientTime = new Date().toLocaleString('en-US', { timeZone: timeZoneToUse, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', timeZoneName: 'short' });
 
                     const res = await fetch(url.toString(), {
                         method: 'POST',
@@ -1835,7 +2047,9 @@
                             message: message,
                             context: this.contextFields,
                             documents: this.documents,
-                            historyLogs: recentLogs
+                            historyLogs: recentLogs,
+                            clientTime: clientTime,
+                            timeZone: timeZoneToUse
                         })
                     });
 
@@ -1843,7 +2057,7 @@
                         const data = await res.json();
                         // replace "Thinking..."
                         this.chatHistory.pop();
-                        this.chatHistory.push({ role: 'assistant', content: data.response });
+                        this.chatHistory.push({ role: 'assistant', content: data.response, id: this.generateId() });
                         this.saveAllLocal();
                         this.syncToCloud();
                     } else {
@@ -1919,9 +2133,9 @@
                 this.showSnackbar('Searching...');
                 
                 try {
-                    // Use the v2 API payload, and us.openfoodfacts.org for better availability
+                    // Reverted to global url to fix CORS/Availability issues
                     const response = await fetch(
-                        `https://us.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=code,product_name,nutriments,image_front_thumb_url`
+                        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=code,product_name,nutriments,image_front_thumb_url`
                     );
                     
                     if (!response.ok) {
@@ -1933,9 +2147,9 @@
                     const resultsDiv = document.getElementById('searchResults');
                     resultsDiv.innerHTML = '';
 
-                    if (data.products && data.products.length > 0) {
+                    if (data.products && Array.isArray(data.products) && data.products.length > 0) {
                         data.products.forEach(product => {
-                            if (product.nutriments && product.nutriments['energy-kcal_100g']) {
+                            if (product.nutriments && product.nutriments['energy-kcal_100g'] !== undefined) {
                                 resultsDiv.appendChild(this.createSearchResultItem(product));
                             }
                         });
@@ -2202,6 +2416,7 @@
 
             deleteLog(id) {
                 this.foodLogs = this.foodLogs.filter(log => log.id !== id);
+                this.deletedIds.push(id);
                 this.saveFoodLogs();
                 this.syncToCloud();
                 this.updateDashboard();
@@ -2505,6 +2720,10 @@
                 try {
                     const url = new URL(this.workerUrl);
                     url.pathname = '/ai';
+                    
+                    // Capture timezone
+                    const timeZoneToUse = this.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    const clientTime = new Date().toLocaleString('en-US', { timeZone: timeZoneToUse, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', timeZoneName: 'short' });
 
                     const response = await fetch(
                         url.toString(),
@@ -2515,7 +2734,9 @@
                             },
                             body: JSON.stringify({
                                 text: text.substring(0, 4000),
-                                context: this.contextFields.filter(f => f.key.trim() || f.value.trim()) // only non-empty fields
+                                context: this.contextFields.filter(f => f.key.trim() || f.value.trim()), // only non-empty fields
+                                clientTime: clientTime,
+                                timeZone: timeZoneToUse
                             })
                         }
                     );
@@ -2567,7 +2788,7 @@
                     }
 
                     this.saveAllLocal();
-                    const synced = await this.syncToCloud({ awaitAck: true });
+                    const synced = await this.syncToCloud({ await Ack: true });
                     this.updateDashboard();
 
                     if (synced === false) {
@@ -2582,14 +2803,42 @@
                 }
             },
 
-            showSettings() {
-                if (this.workerUrl && this.syncId) {
-                    prompt('To sync with other devices, copy and use this exact Sync ID on their login screen:', this.syncId);
-                } else {
-                    alert("You are currently using offline mode. Log in with a Worker URL to sync across devices.");
+            openSettingsModal() {
+                document.getElementById('settingsWorkerUrl').value = this.workerUrl || '';
+                document.getElementById('settingsSyncId').value = this.syncId || '';
+                document.getElementById('settingsTimeZone').value = this.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                
+                document.getElementById('settingsModal').classList.add('active');
+            },
+
+            saveSettings() {
+                const url = document.getElementById('settingsWorkerUrl').value.trim();
+                const sync = document.getElementById('settingsSyncId').value.trim();
+                const tz = document.getElementById('settingsTimeZone').value.trim();
+                
+                if (url && !url.startsWith('http')) {
+                    this.showSnackbar('Invalid Worker URL');
+                    return;
                 }
                 
-                const choice = confirm('Do you want to log out and clear all data on THIS device? (Cloud data remains safe)');
+                this.workerUrl = url;
+                this.syncId = sync;
+                this.timezone = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                
+                if (url) localStorage.setItem('cf_worker_url', url);
+                if (sync) localStorage.setItem('cf_sync_id', sync);
+                if (tz) localStorage.setItem('user_timezone', tz);
+                
+                document.getElementById('settingsModal').classList.remove('active');
+                this.showSnackbar('Settings Saved!');
+                
+                if (url && sync) {
+                    this.fetchFromCloud(true);
+                }
+            },
+
+            logoutAndClear() {
+                const choice = confirm('Do you want to log out and clear all data on THIS device? (Cloud data remains safe if it was synced)');
                 if (choice) {
                     localStorage.clear();
                     location.reload();
