@@ -291,6 +291,7 @@
         .btn-text {
             background: transparent;
             color: var(--md-sys-color-primary);
+            border: 1px solid var(--md-sys-color-primary-container);
         }
 
         .btn-text:hover {
@@ -1040,9 +1041,16 @@
 
                 <!-- Search Tab -->
                 <div id="searchTab">
-                    <div class="text-field">
-                        <input type="text" id="searchInput" placeholder=" " autocomplete="off">
+                    <div class="text-field" style="margin-bottom: 8px;">
+                        <input type="text" id="searchInput" placeholder=" " autocomplete="off" onkeypress="if(event.key === 'Enter') app.searchFood()">
                         <label>Search for food</label>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+                        <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px; color: var(--md-sys-color-on-surface-variant);">
+                            <input type="checkbox" id="aiSearchToggle" checked style="margin-right: 6px; accent-color: var(--md-sys-color-primary);">
+                            <span class="material-icons" style="font-size: 16px; margin-right: 4px; color: var(--md-sys-color-primary);">auto_awesome</span>
+                            Enhanced AI Search
+                        </label>
                     </div>
                     <button class="btn btn-filled btn-full" onclick="app.searchFood()">
                         <span class="material-icons">search</span>
@@ -1956,51 +1964,85 @@
                 this.setButtonLoading('photoButton', true, 'Uploading & Analyzing...', 'Take a Photo', 'photo_camera');
 
                 try {
-                    // Convert to base64
+                    // We must compress the image heavily before converting to base64
+                    // so the Cloudflare Worker does not crash from memory constraints.
                     const reader = new FileReader();
                     reader.readAsDataURL(file);
-                    reader.onload = async () => {
-                        const base64String = reader.result.split(',')[1];
+                    
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = async () => {
+                            // Resize the image to max 800px width/height to dramatically save memory
+                            const canvas = document.createElement('canvas');
+                            const MAX_SIZE = 800;
+                            let width = img.width;
+                            let height = img.height;
 
-                        const url = new URL(this.workerUrl);
-                        url.pathname = '/analyze-image';
+                            if (width > height && width > MAX_SIZE) {
+                                height *= MAX_SIZE / width;
+                                width = MAX_SIZE;
+                            } else if (height > MAX_SIZE) {
+                                width *= MAX_SIZE / height;
+                                height = MAX_SIZE;
+                            }
 
-                        const res = await fetch(url.toString(), {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ image: base64String })
-                        });
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
 
-                        if (!res.ok) throw new Error('Analysis failed');
-                        const data = await res.json();
+                            // Compress as standard JPEG
+                            const base64String = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-                        // Send the AI's response straight to the Chat tab
-                        this.chatHistory.push({ 
-                            role: 'user', 
-                            content: '📸 Uploaded a photo of my food for analysis.', 
-                            id: this.generateId() 
-                        });
-                        this.chatHistory.push({ 
-                            role: 'assistant', 
-                            content: data.response, 
-                            id: this.generateId() 
-                        });
-                        
-                        this.saveAllLocal();
-                        this.syncToCloud();
-                        this.renderChatMessages();
-                        
-                        // Switch to chat tab to see results
-                        this.navigate('ask');
-                        this.showSnackbar('Image analyzed successfully!');
+                            try {
+                                const url = new URL(this.workerUrl);
+                                url.pathname = '/analyze-image';
+
+                                const res = await fetch(url.toString(), {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ image: base64String })
+                                });
+
+                                if (!res.ok) throw new Error('Analysis failed');
+                                const data = await res.json();
+
+                                // Send the AI's response straight to the Chat tab
+                                this.chatHistory.push({ 
+                                    role: 'user', 
+                                    content: '📸 Uploaded a photo of my food for analysis.', 
+                                    id: this.generateId() 
+                                });
+                                this.chatHistory.push({ 
+                                    role: 'assistant', 
+                                    content: data.response, 
+                                    id: this.generateId() 
+                                });
+                                
+                                this.saveAllLocal();
+                                this.syncToCloud();
+                                this.renderChatMessages();
+                                
+                                // Switch to chat tab to see results
+                                this.navigate('ask');
+                                this.showSnackbar('Image analyzed successfully!');
+                            } catch (err) {
+                                console.error(err);
+                                this.showSnackbar('Failed to analyze image. Check worker connection.');
+                            } finally {
+                                document.getElementById('photoProcessing').classList.add('hidden');
+                                this.setButtonLoading('photoButton', false, 'Uploading & Analyzing...', 'Take a Photo', 'photo_camera');
+                                event.target.value = ''; // reset file input safely
+                            }
+                        };
+                        img.src = e.target.result;
                     };
                 } catch (error) {
                     console.error(error);
-                    this.showSnackbar('Failed to analyze image. Please try again.');
-                } finally {
+                    this.showSnackbar('Error reading image file.');
                     document.getElementById('photoProcessing').classList.add('hidden');
                     this.setButtonLoading('photoButton', false, 'Uploading & Analyzing...', 'Take a Photo', 'photo_camera');
-                    event.target.value = ''; // reset input
+                    event.target.value = '';
                 }
             },
 
@@ -2130,12 +2172,81 @@
                     return;
                 }
 
-                this.showSnackbar('Searching...');
+                const useAi = document.getElementById('aiSearchToggle').checked;
+                const resultsDiv = document.getElementById('searchResults');
+                
+                if (useAi && this.workerUrl) {
+                    resultsDiv.innerHTML = '<div class="text-center" style="padding: 20px;"><div class="spinner"></div><p style="margin-top:10px;color:var(--md-sys-color-on-surface-variant);">AI is analyzing your search...</p></div>';
+                    try {
+                        const url = new URL(this.workerUrl);
+                        url.pathname = '/ask';
+                        
+                        const aiSearchPrompt = `I ate the following items and need to log them: "${query}". 
+                        Please separate them, correct any typos, and estimate the standard macros. 
+                        Output ONLY the <log_action>{"food": "Name", "cals": 100, "protein": 5, "carbs": 10, "fat": 2}</log_action> tags for each item. Do not include any conversational text.`;
+
+                        const res = await fetch(url.toString(), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                message: aiSearchPrompt,
+                                context: [], documents: [], historyLogs: []
+                            })
+                        });
+
+                        if (!res.ok) throw new Error('AI Search failed');
+                        const data = await res.json();
+                        const aiResponse = data.response;
+                        
+                        const logRegex = /<log_action>([\s\S]*?)<\/log_action>/g;
+                        const matches = [...aiResponse.matchAll(logRegex)];
+
+                        resultsDiv.innerHTML = '';
+                        
+                        if (matches.length > 0) {
+                            const aiHeader = document.createElement('div');
+                            aiHeader.innerHTML = '<div style="font-size: 12px; color: var(--md-sys-color-primary); font-weight: 500; margin-bottom: 8px; display: flex; align-items: center;"><span class="material-icons" style="font-size: 16px; margin-right: 4px;">auto_awesome</span> AI Best Guesses</div>';
+                            resultsDiv.appendChild(aiHeader);
+
+                            matches.forEach(match => {
+                                try {
+                                    const action = JSON.parse(match[1]);
+                                    const mockProduct = {
+                                        product_name: action.food + ' (AI Estimate)',
+                                        nutriments: {
+                                            'energy-kcal_100g': action.cals,
+                                            'proteins_100g': action.protein,
+                                            'carbohydrates_100g': action.carbs,
+                                            'fat_100g': action.fat
+                                        },
+                                        image_front_thumb_url: '',
+                                        isAiGuess: true
+                                    };
+                                    resultsDiv.appendChild(this.createSearchResultItem(mockProduct));
+                                } catch(e) {}
+                            });
+                        } else {
+                             this.showSnackbar('AI couldn\'t parse that accurately, falling back to standard search...');
+                             await this.standardSearch(query, resultsDiv);
+                        }
+
+                    } catch (e) {
+                        console.error("AI Search error", e);
+                        this.showSnackbar('AI Search failed, falling back to standard search.');
+                        await this.standardSearch(query, resultsDiv);
+                    }
+                } else {
+                    await this.standardSearch(query, resultsDiv);
+                }
+            },
+
+            async standardSearch(query, resultsDiv) {
+                this.showSnackbar('Searching database...');
+                resultsDiv.innerHTML = '<div class="text-center" style="padding: 20px;"><div class="spinner"></div><p style="margin-top:10px;color:var(--md-sys-color-on-surface-variant);">Searching database...</p></div>';
                 
                 try {
-                    // Reverted to global url to fix CORS/Availability issues
                     const response = await fetch(
-                        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=15&fields=code,product_name,nutriments,image_front_thumb_url`
+                        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=24`
                     );
                     
                     if (!response.ok) {
@@ -2143,22 +2254,27 @@
                     }
                     
                     const data = await response.json();
-
-                    const resultsDiv = document.getElementById('searchResults');
                     resultsDiv.innerHTML = '';
 
+                    let addedCount = 0;
                     if (data.products && Array.isArray(data.products) && data.products.length > 0) {
                         data.products.forEach(product => {
-                            if (product.nutriments && product.nutriments['energy-kcal_100g'] !== undefined) {
+                            const n = product.nutriments || {};
+                            if (n['energy-kcal_100g'] !== undefined || n['energy-kcal'] !== undefined || n.proteins_100g !== undefined || n.carbohydrates_100g !== undefined) {
+                                product.isAiGuess = false;
                                 resultsDiv.appendChild(this.createSearchResultItem(product));
+                                addedCount++;
                             }
                         });
-                    } else {
-                        resultsDiv.innerHTML = '<div class="empty-state"><span class="material-icons">search_off</span><p>No results found</p></div>';
+                    } 
+                    
+                    if (addedCount === 0) {
+                        resultsDiv.innerHTML = '<div class="empty-state"><span class="material-icons">search_off</span><p>No nutritional results found for this item.</p></div>';
                     }
                 } catch (error) {
                     this.showSnackbar('Search failed. Please try again.');
                     console.error(error);
+                    resultsDiv.innerHTML = '<div class="empty-state"><span class="material-icons">error_outline</span><p>Error connecting to database.</p></div>';
                 }
             },
 
@@ -2167,20 +2283,25 @@
                 item.className = 'search-result-item';
                 item.onclick = () => this.showFoodModal(product);
 
-                const nutriments = product.nutriments;
-                const calories = Math.round(nutriments['energy-kcal_100g'] || 0);
-                const protein = (nutriments.proteins_100g || 0).toFixed(1);
-                const carbs = (nutriments.carbohydrates_100g || 0).toFixed(1);
-                const fat = (nutriments.fat_100g || 0).toFixed(1);
+                const nutriments = product.nutriments || {};
+                const calories = Math.round(nutriments['energy-kcal_100g'] || nutriments['energy-kcal'] || 0);
+                const protein = (nutriments.proteins_100g || nutriments.proteins || 0).toFixed(1);
+                const carbs = (nutriments.carbohydrates_100g || nutriments.carbohydrates || 0).toFixed(1);
+                const fat = (nutriments.fat_100g || nutriments.fat || 0).toFixed(1);
+
+                const servingText = product.isAiGuess ? 'total est.' : 'per 100g';
+                const iconHtml = product.isAiGuess 
+                    ? '<div class="search-result-image" style="display:flex;align-items:center;justify-content:center;background:var(--md-sys-color-primary-container);color:var(--md-sys-color-primary);"><span class="material-icons">auto_awesome</span></div>'
+                    : (product.image_front_thumb_url 
+                        ? `<img src="${product.image_front_thumb_url}" class="search-result-image" alt="${product.product_name}">` 
+                        : '<div class="search-result-image"></div>');
 
                 item.innerHTML = `
-                    ${product.image_front_thumb_url ? 
-                        `<img src="${product.image_front_thumb_url}" class="search-result-image" alt="${product.product_name}">` : 
-                        '<div class="search-result-image"></div>'}
+                    ${iconHtml}
                     <div class="search-result-content">
                         <div class="search-result-name">${product.product_name || 'Unknown Product'}</div>
                         <div class="search-result-macros">
-                            ${calories} kcal • P: ${protein}g • C: ${carbs}g • F: ${fat}g (per 100g)
+                            ${calories} kcal • P: ${protein}g • C: ${carbs}g • F: ${fat}g (${servingText})
                         </div>
                     </div>
                     <span class="material-icons" style="color: var(--md-sys-color-primary);">chevron_right</span>
@@ -2245,6 +2366,7 @@
                     if (data.status === 1 && data.product) {
                         const resultsDiv = document.getElementById('scanResult');
                         resultsDiv.innerHTML = '';
+                        data.product.isAiGuess = false;
                         resultsDiv.appendChild(this.createSearchResultItem(data.product));
                         this.showFoodModal(data.product);
                     } else {
@@ -2264,12 +2386,21 @@
                 const imageDiv = document.getElementById('foodModalImage');
                 if (product.image_front_small_url || product.image_front_thumb_url) {
                     imageDiv.innerHTML = `<img src="${product.image_front_small_url || product.image_front_thumb_url}" style="max-width: 200px; border-radius: 12px;">`;
+                } else if (product.isAiGuess) {
+                    imageDiv.innerHTML = '<span class="material-icons" style="font-size: 64px; color: var(--md-sys-color-primary);">auto_awesome</span>';
                 } else {
                     imageDiv.innerHTML = '';
                 }
 
                 // Reset serving size selector
-                document.getElementById('servingSizeSelect').value = '100';
+                const servingSelect = document.getElementById('servingSizeSelect');
+                if (product.isAiGuess) {
+                    servingSelect.options[0].text = "AI Estimated Serving";
+                } else {
+                    servingSelect.options[0].text = "100g";
+                }
+                
+                servingSelect.value = '100';
                 document.getElementById('customAmountGroup').classList.add('hidden');
                 document.getElementById('customAmount').value = '100';
 
@@ -2282,7 +2413,7 @@
                 if (!this.selectedFood) return;
 
                 const servingSize = document.getElementById('servingSizeSelect').value;
-                const nutriments = this.selectedFood.nutriments;
+                const nutriments = this.selectedFood.nutriments || {};
                 
                 let multiplier = 1;
 
@@ -2291,7 +2422,7 @@
                     document.getElementById('customAmountGroup').classList.add('hidden');
                 } else if (servingSize === 'serving') {
                     // Use serving data if available
-                    if (nutriments['energy-kcal_serving']) {
+                    if (nutriments['energy-kcal_serving'] !== undefined) {
                         const calories = Math.round(nutriments['energy-kcal_serving'] || 0);
                         const protein = (nutriments.proteins_serving || 0).toFixed(1);
                         const carbs = (nutriments.carbohydrates_serving || 0).toFixed(1);
@@ -2312,10 +2443,10 @@
                     multiplier = customAmount / 100;
                 }
 
-                const calories = Math.round((nutriments['energy-kcal_100g'] || 0) * multiplier);
-                const protein = ((nutriments.proteins_100g || 0) * multiplier).toFixed(1);
-                const carbs = ((nutriments.carbohydrates_100g || 0) * multiplier).toFixed(1);
-                const fat = ((nutriments.fat_100g || 0) * multiplier).toFixed(1);
+                const calories = Math.round((nutriments['energy-kcal_100g'] || nutriments['energy-kcal'] || 0) * multiplier);
+                const protein = ((nutriments.proteins_100g || nutriments.proteins || 0) * multiplier).toFixed(1);
+                const carbs = ((nutriments.carbohydrates_100g || nutriments.carbohydrates || 0) * multiplier).toFixed(1);
+                const fat = ((nutriments.fat_100g || nutriments.fat || 0) * multiplier).toFixed(1);
 
                 document.getElementById('modalCalories').textContent = calories;
                 document.getElementById('modalProtein').textContent = protein;
@@ -2341,7 +2472,7 @@
                 let servingSizeText;
                 
                 if (servingSize === '100') {
-                    servingSizeText = '100g';
+                    servingSizeText = this.selectedFood.isAiGuess ? 'Estimated' : '100g';
                 } else if (servingSize === 'serving') {
                     servingSizeText = 'Standard Serving';
                 } else {
@@ -2399,7 +2530,8 @@
                         'proteins_100g': log.protein_g,
                         'carbohydrates_100g': log.carbs_g,
                         'fat_100g': log.fat_g
-                    }
+                    },
+                    isAiGuess: log.serving_size_logged === 'Estimated'
                 };
 
                 document.getElementById('foodModalTitle').textContent = 'Edit ' + log.food_name;
