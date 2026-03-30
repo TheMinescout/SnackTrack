@@ -2788,7 +2788,7 @@
                     }
 
                     this.saveAllLocal();
-                    const synced = await this.syncToCloud({ await Ack: true });
+                    const synced = await this.syncToCloud({ awaitAck: true });
                     this.updateDashboard();
 
                     if (synced === false) {
