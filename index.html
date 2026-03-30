@@ -328,6 +328,7 @@
             box-shadow: var(--md-sys-elevation-2);
             color: var(--md-sys-color-outline);
             transition: all 0.2s ease;
+            cursor: pointer; /* Added so users know they can click it */
         }
 
         .sync-indicator.synced {
@@ -882,7 +883,8 @@
 
     <!-- Main App -->
     <div id="mainApp" class="app-shell hidden">
-        <div id="cloudSyncIndicator" class="sync-indicator offline" title="Cloud sync is idle">
+        <!-- ADDED ONCLICK HERE TO FORCE FETCH -->
+        <div id="cloudSyncIndicator" class="sync-indicator offline" title="Click to force fetch from cloud" onclick="app.fetchFromCloud()">
             <span class="material-icons" style="font-size: 20px;">cloud_done</span>
         </div>
         <div class="main-container">
@@ -1559,6 +1561,7 @@
                             setTimeout(() => this.syncToCloud({ awaitAck: false }), 200);
                         }
                         this.setSyncState('synced');
+                        this.showSnackbar('Fetched latest data from cloud!');
                     } else {
                         this.setSyncState('error');
                     }
@@ -2580,7 +2583,13 @@
             },
 
             showSettings() {
-                const choice = confirm('Do you want to log out and clear all data?');
+                if (this.workerUrl && this.syncId) {
+                    prompt('To sync with other devices, copy and use this exact Sync ID on their login screen:', this.syncId);
+                } else {
+                    alert("You are currently using offline mode. Log in with a Worker URL to sync across devices.");
+                }
+                
+                const choice = confirm('Do you want to log out and clear all data on THIS device? (Cloud data remains safe)');
                 if (choice) {
                     localStorage.clear();
                     location.reload();
