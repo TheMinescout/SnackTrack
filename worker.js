@@ -207,6 +207,28 @@ export default {
         return new Response(JSON.stringify(response), { headers: corsHeaders });
       }
 
+      // route: /analyze-image (POST)
+      if (path === "/analyze-image" && request.method === "POST") {
+        if (!hasAI) {
+          return new Response(JSON.stringify({ error: "AI binding is not configured" }), { status: 503, headers: corsHeaders });
+        }
+        const { image } = await request.json();
+        if (!image) return new Response(JSON.stringify({ error: "No image provided" }), { status: 400, headers: corsHeaders });
+
+        const response = await env.AI.run('@cf/meta/llama-3.2-11b-vision-instruct', {
+            messages: [
+                { role: 'system', content: 'You are an expert nutritionist AI for the SnackTrack app. Identify the food in the photo and estimate its nutrition. Reply in Markdown with the meal name, an estimated portion size, and the calories, protein, carbs and fat. State clearly that the values are estimates.' },
+                { role: 'user', content: [
+                    { type: 'text', text: 'Analyze this photo of my food and estimate the macros.' },
+                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }
+                ] }
+            ],
+            max_tokens: 512
+        });
+
+        return new Response(JSON.stringify(response), { headers: corsHeaders });
+      }
+
       // route: /ai (POST)
       // Accept /ai and /
       if ((path === "/ai" || path === "/ai/" || path === "/") && request.method === "POST") {
